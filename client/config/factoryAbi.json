@@ -1,0 +1,41 @@
+[
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_title", "type": "string" },
+      { "internalType": "string", "name": "_description", "type": "string" },
+      { "internalType": "uint256", "name": "_depositAmount", "type": "uint256" },
+      { "internalType": "uint256", "name": "_totalRounds", "type": "uint256" },
+      { "internalType": "uint256", "name": "_roundDuration", "type": "uint256" },
+      { "internalType": "uint256", "name": "_startDelaySeconds", "type": "uint256" }
+    ],
+    "name": "createChallenge",
+    "outputs": [
+      { "internalType": "address", "name": "", "type": "address" }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getAllChallenges",
+    "outputs": [
+      { "internalType": "address[]", "name": "", "type": "address[]" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "challengeAddress", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "creator", "type": "address" },
+      { "indexed": false, "internalType": "string", "name": "title", "type": "string" },
+      { "indexed": false, "internalType": "uint256", "name": "depositAmount", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "startTime", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "totalRounds", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "roundDuration", "type": "uint256" }
+    ],
+    "name": "ChallengeCreated",
+    "type": "event"
+  }
+]

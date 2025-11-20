@@ -1,0 +1,58 @@
+[
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "aliveCount", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "checkIn", "outputs": [] },
+  { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "claimReward", "outputs": [] },
+  { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "forceStart", "outputs": [] },
+  { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "forceSettle", "outputs": [] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "createdAt", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "creator", "outputs": [ { "internalType": "address", "name": "", "type": "address" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "currentRound", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "depositAmount", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "description", "outputs": [ { "internalType": "string", "name": "", "type": "string" } ] },
+  { "inputs": [ { "internalType": "address", "name": "user", "type": "address" } ], "stateMutability": "nonpayable", "type": "function", "name": "eliminate", "outputs": [] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "endTime", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [ { "internalType": "address", "name": "user", "type": "address" } ], "stateMutability": "view", "type": "function", "name": "getParticipantInfo", "outputs": [
+      { "internalType": "bool", "name": "joined", "type": "bool" },
+      { "internalType": "bool", "name": "eliminated", "type": "bool" },
+      { "internalType": "uint256", "name": "lastCheckInRound", "type": "uint256" },
+      { "internalType": "bool", "name": "rewardClaimed", "type": "bool" },
+      { "internalType": "bool", "name": "isWinner", "type": "bool" },
+      { "internalType": "bool", "name": "hasCheckedIn", "type": "bool" }
+    ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "getParticipants", "outputs": [ { "internalType": "address[]", "name": "", "type": "address[]" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "getSummary", "outputs": [
+      { "internalType": "string", "name": "", "type": "string" },
+      { "internalType": "string", "name": "", "type": "string" },
+      { "internalType": "address", "name": "", "type": "address" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint8", "name": "", "type": "uint8" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" },
+      { "internalType": "uint256", "name": "", "type": "uint256" }
+    ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "getTimeInfo", "outputs": [
+      { "internalType": "uint256", "name": "currentRoundNumber", "type": "uint256" },
+      { "internalType": "uint256", "name": "endTimestamp", "type": "uint256" },
+      { "internalType": "bool", "name": "started", "type": "bool" },
+      { "internalType": "bool", "name": "finished", "type": "bool" }
+    ] },
+  { "inputs": [], "name": "joinChallenge", "outputs": [], "stateMutability": "payable", "type": "function" },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "participantCount", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "poolBalance", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "rewardPerWinner", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "name": "settle", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "settledAt", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "startTime", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "status", "outputs": [ { "internalType": "uint8", "name": "", "type": "uint8" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "title", "outputs": [ { "internalType": "string", "name": "", "type": "string" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "totalRounds", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "viewStatus", "outputs": [ { "internalType": "uint8", "name": "", "type": "uint8" } ] },
+  { "inputs": [], "stateMutability": "view", "type": "function", "name": "winnersCount", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] }
+]
+
