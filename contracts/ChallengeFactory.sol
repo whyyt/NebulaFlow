@@ -22,12 +22,13 @@ contract ChallengeFactory {
         uint256 _depositAmount,
         uint256 _totalRounds,
         uint256 _roundDuration,
-        uint256 _startDelaySeconds
+        uint256 /* _startDelaySeconds - 已废弃，保留以保持 ABI 兼容性 */
     ) external returns (address) {
         require(bytes(_title).length > 0, "TITLE_REQUIRED");
         require(bytes(_description).length > 0, "DESC_REQUIRED");
 
-        uint256 startTime = block.timestamp + _startDelaySeconds;
+        // startTime 设为 0，表示未开始，需要 creator 手动开始
+        uint256 startTime = 0;
         Challenge newChallenge = new Challenge(
             _title,
             _description,

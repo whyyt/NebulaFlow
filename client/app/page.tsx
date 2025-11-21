@@ -148,7 +148,8 @@ export default function Home() {
       setIsSubmitting(true);
       const depositWei = parseEther(deposit);
       const roundSeconds = BigInt(roundDuration * 60);
-      const startDelaySeconds = BigInt(startDelay * 60);
+      // startDelay 设为 0，因为挑战创建后不会自动开始，需要 creator 手动开始
+      const startDelaySeconds = BigInt(0);
 
       const hash = await writeContractAsync({
         address: FACTORY_ADDRESS,
@@ -173,7 +174,6 @@ export default function Home() {
       setDeposit("0.01");
       setTotalRounds(3);
       setRoundDuration(5);
-      setStartDelay(1);
       await triggerRefresh();
     } catch (error) {
       console.error(error);
@@ -491,7 +491,7 @@ function CreateForm(props: CreateFormProps) {
             style={inputStyle}
           />
         </Field>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
           <Field label="挑战天数">
             <input
               type="number"
@@ -512,15 +512,6 @@ function CreateForm(props: CreateFormProps) {
             <p style={{ margin: "4px 0 0", fontSize: 12, opacity: 0.7 }}>
               每轮签到的时间长度，在该轮次结束前任意时间都可以签到
             </p>
-          </Field>
-          <Field label="开赛延迟（分钟）">
-            <input
-              type="number"
-              min={0}
-              value={startDelay}
-              onChange={(e) => onStartDelay(Number(e.target.value))}
-              style={inputStyle}
-            />
           </Field>
         </div>
         {error && (
@@ -595,36 +586,11 @@ function ChallengeGallery({
     <section style={{ ...SECTION_CARD_STYLE, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={glowStyle} />
       <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, fontSize: 22 }}>链上挑战列表</h2>
-            <p style={{ opacity: 0.7, margin: 0, fontSize: 14 }}>
-              当前已部署合约：{addresses.length}
-            </p>
-          </div>
-          <button
-            onClick={onRefetch}
-            style={{
-              borderRadius: 999,
-              padding: "10px 18px",
-              background: "rgba(59,130,246,0.18)",
-              border: "1px solid rgba(59,130,246,0.55)",
-              color: "#bfdbfe",
-              cursor: "pointer",
-              fontSize: 13,
-              boxShadow: "0 10px 30px rgba(59,130,246,0.35)",
-            }}
-          >
-            手动刷新
-          </button>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22 }}>链上挑战列表</h2>
+          <p style={{ opacity: 0.7, margin: 0, fontSize: 14 }}>
+            当前已部署合约：{addresses.length}
+          </p>
         </div>
 
         {addresses.length === 0 ? (
@@ -795,11 +761,11 @@ function ChallengeCard({
     participant.joined &&
     !participant.eliminated &&
     (!timeInfo || !timeInfo.finished);
-  const canSettle =
+  const canForceEnd =
     summary &&
-    timeInfo &&
-    timeInfo.finished &&
-    summary.status !== 2;
+    summary.status === 1 &&
+    account &&
+    account.toLowerCase() === summary.creator.toLowerCase();
   const canForceSettle =
     summary &&
     summary.status === 1 &&
@@ -812,13 +778,13 @@ function ChallengeCard({
     participant.isWinner &&
     !participant.rewardClaimed;
 
-  async function handleAction(functionName: string, overrides?: { value?: bigint }) {
+  async function handleAction(functionName: string, overrides?: { value?: bigint }, skipSimulate?: boolean) {
     try {
       setWorking(functionName);
       setError(null);
       
-      // 先进行模拟调用，提前发现错误
-      if (publicClient && currentAccount) {
+      // 先进行模拟调用，提前发现错误（报名操作跳过模拟，直接弹出钱包）
+      if (!skipSimulate && publicClient && currentAccount) {
         try {
           await publicClient.simulateContract({
             account: currentAccount,
@@ -1047,12 +1013,17 @@ function ChallengeCard({
             >
               <strong>我的状态</strong>
               <span>
-                {participant.joined ? "已报名" : "未报名"} ·{" "}
-                {participant.eliminated
-                  ? "已淘汰"
-                  : participant.hasCheckedIn
-                  ? `最近签到轮次 #${participant.lastCheckInRound + 1}`
-                  : "尚未签到"}
+                {participant.joined ? "已报名" : "未报名"}
+                {participant.joined && (
+                  <>
+                    {" · "}
+                    {participant.eliminated
+                      ? "已淘汰"
+                      : participant.hasCheckedIn
+                      ? "已签到"
+                      : "尚未签到"}
+                  </>
+                )}
               </span>
               {summary.status === 2 && (
                 <span>
@@ -1089,12 +1060,12 @@ function ChallengeCard({
                 />
               )}
               <ActionButton
-                label="报名押金"
+                label="报名"
                 disabled={!canJoin}
                 busy={working === "joinChallenge"}
                 onClick={() => {
                   if (!summary) return;
-                  void handleAction("joinChallenge", { value: summary.depositAmount });
+                  void handleAction("joinChallenge", { value: summary.depositAmount }, true);
                 }}
               />
               <ActionButton
@@ -1105,19 +1076,21 @@ function ChallengeCard({
                   void handleAction("checkIn");
                 }}
               />
-              {/* 到达结束时间后，任何人都可以触发结算 */}
-              <ActionButton
-                label="自动结算"
-                disabled={!canSettle}
-                busy={working === "settle"}
-                onClick={() => {
-                  void handleAction("settle");
-                }}
-              />
-              {/* 只有 creator 可以在挑战进行中强制结算 */}
+              {/* 只有 creator 可以结束挑战 */}
+              {canForceEnd && (
+                <ActionButton
+                  label="结束挑战"
+                  disabled={!canForceEnd}
+                  busy={working === "forceEnd"}
+                  onClick={() => {
+                    void handleAction("forceEnd");
+                  }}
+                />
+              )}
+              {/* 只有 creator 可以在挑战进行中奖池结算 */}
               {canForceSettle && (
                 <ActionButton
-                  label="强制结算"
+                  label="奖池结算"
                   disabled={!canForceSettle}
                   busy={working === "forceSettle"}
                   onClick={() => {
@@ -1133,7 +1106,6 @@ function ChallengeCard({
                   void handleAction("claimReward");
                 }}
               />
-              <ActionButton label="刷新数据" disabled={false} onClick={refresh} />
             </div>
           </>
         ) : (

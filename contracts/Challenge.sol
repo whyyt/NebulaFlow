@@ -64,7 +64,8 @@ contract Challenge {
         require(_depositAmount > 0, "ZERO_DEPOSIT");
         require(_totalRounds > 0 && _totalRounds <= 90, "INVALID_ROUNDS");
         require(_roundDuration >= 60, "ROUND_TOO_SHORT");
-        require(_startTime >= block.timestamp, "START_IN_PAST");
+        // startTime 为 0 表示未开始，需要 creator 手动开始
+        require(_startTime == 0 || _startTime >= block.timestamp, "START_IN_PAST");
 
         title = _title;
         description = _description;
@@ -84,7 +85,8 @@ contract Challenge {
     function joinChallenge() external payable {
         _syncStatus();
         require(status == Status.Scheduled, "JOIN_CLOSED");
-        require(block.timestamp < startTime, "ALREADY_STARTED");
+        // 如果 startTime 为 0，表示未开始，允许报名；否则检查是否已开始
+        require(startTime == 0 || block.timestamp < startTime, "ALREADY_STARTED");
         require(msg.value == depositAmount, "WRONG_DEPOSIT");
 
         Participant storage p = participantInfo[msg.sender];
@@ -101,8 +103,58 @@ contract Challenge {
     function forceStart() external {
         require(msg.sender == creator, "ONLY_CREATOR");
         require(status == Status.Scheduled, "ALREADY_STARTED");
+        require(startTime == 0, "ALREADY_STARTED");
         status = Status.Active;
         startTime = block.timestamp;
+    }
+
+    function forceEnd() external {
+        require(msg.sender == creator, "ONLY_CREATOR");
+        require(status == Status.Active, "NOT_ACTIVE");
+        require(startTime > 0, "NOT_STARTED");
+        
+        // 执行结算逻辑
+        uint256 finalRound = totalRounds - 1;
+        for (uint256 i = 0; i < participantList.length; i++) {
+            address user = participantList[i];
+            Participant storage p = participantInfo[user];
+            if (!p.joined || p.eliminated) {
+                continue;
+            }
+            bool finished = p.lastCheckInRound != NOT_CHECKED &&
+                p.lastCheckInRound == finalRound;
+            if (!finished) {
+                uint256 missedRound = p.lastCheckInRound == NOT_CHECKED
+                    ? 0
+                    : p.lastCheckInRound + 1;
+                _eliminate(p, user, missedRound);
+            }
+        }
+
+        status = Status.Settled;
+        settledAt = block.timestamp;
+        winnersCount = aliveCount;
+
+        uint256 balance = address(this).balance;
+        if (winnersCount == 0) {
+            if (balance > 0) {
+                (bool sentCreator, ) = creator.call{value: balance}("");
+                require(sentCreator, "CREATOR_TRANSFER_FAIL");
+            }
+            emit Settled(0, 0);
+            return;
+        }
+
+        rewardPerWinner = balance / winnersCount;
+        uint256 totalPayout = rewardPerWinner * winnersCount;
+        uint256 remainder = balance - totalPayout;
+
+        if (remainder > 0) {
+            (bool sent, ) = creator.call{value: remainder}("");
+            require(sent, "REMAINDER_FAIL");
+        }
+
+        emit Settled(winnersCount, rewardPerWinner);
     }
 
     function checkIn() external {
@@ -360,6 +412,11 @@ contract Challenge {
         if (computedStatus == Status.Scheduled) {
             return 0;
         }
+        
+        // 如果 startTime 为 0，表示未开始
+        if (startTime == 0) {
+            return 0;
+        }
 
         uint256 elapsed = block.timestamp >= startTime ? block.timestamp - startTime : 0;
         uint256 round = elapsed / roundDuration;
@@ -370,6 +427,11 @@ contract Challenge {
     }
 
     function viewCurrentRound() public view returns (uint256) {
+        // 如果 startTime 为 0，表示未开始
+        if (startTime == 0) {
+            return 0;
+        }
+        
         uint256 elapsed = block.timestamp >= startTime ? block.timestamp - startTime : 0;
         uint256 round = elapsed / roundDuration;
         if (round >= totalRounds) {
@@ -379,12 +441,20 @@ contract Challenge {
     }
 
     function endTime() public view returns (uint256) {
+        // 如果 startTime 为 0，返回 0 表示未开始
+        if (startTime == 0) {
+            return 0;
+        }
         return startTime + (totalRounds * roundDuration);
     }
 
     function viewStatus() public view returns (Status) {
         if (status == Status.Settled) {
             return Status.Settled;
+        }
+        // 如果 startTime 为 0，表示未开始
+        if (startTime == 0) {
+            return Status.Scheduled;
         }
         if (block.timestamp >= startTime) {
             return Status.Active;
@@ -397,6 +467,10 @@ contract Challenge {
     // ------------------------
 
     function _syncStatus() internal {
+        // 如果 startTime 为 0，表示未开始，不自动切换状态
+        if (startTime == 0) {
+            return;
+        }
         if (status == Status.Scheduled && block.timestamp >= startTime) {
             status = Status.Active;
         }

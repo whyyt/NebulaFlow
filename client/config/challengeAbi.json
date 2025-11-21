@@ -3,6 +3,7 @@
   { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "checkIn", "outputs": [] },
   { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "claimReward", "outputs": [] },
   { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "forceStart", "outputs": [] },
+  { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "forceEnd", "outputs": [] },
   { "inputs": [], "stateMutability": "nonpayable", "type": "function", "name": "forceSettle", "outputs": [] },
   { "inputs": [], "stateMutability": "view", "type": "function", "name": "createdAt", "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ] },
   { "inputs": [], "stateMutability": "view", "type": "function", "name": "creator", "outputs": [ { "internalType": "address", "name": "", "type": "address" } ] },
