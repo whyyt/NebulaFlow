@@ -12,6 +12,13 @@ import {
 import { injected } from "wagmi/connectors";
 import { formatEther, parseEther } from "viem";
 import { FACTORY_ADDRESS, FACTORY_ABI, CHALLENGE_ABI } from "../lib/contract";
+import { FadeIn } from "../components/animations/FadeIn";
+import { SlideInLeft } from "../components/animations/SlideInLeft";
+import { SlideInRight } from "../components/animations/SlideInRight";
+import { ScaleIn } from "../components/animations/ScaleIn";
+import { FloatingOrb } from "../components/animations/FloatingOrb";
+import { ParticleField } from "../components/animations/ParticleField";
+import { TextReveal } from "../components/animations/TextReveal";
 
 type ChallengeSummary = {
   title: string;
@@ -46,7 +53,7 @@ type ParticipantInfo = {
   hasCheckedIn: boolean;
 };
 
-const STATUS_LABEL = ["未开始", "进行中", "已结算"];
+const STATUS_LABEL = ["未开始", "进行中", "活动结束"];
 
 const PANEL_CARD_STYLE: CSSProperties = {
   position: "relative",
@@ -199,6 +206,7 @@ export default function Home() {
         overflow: "hidden",
       }}
     >
+      <ParticleField count={15} />
       <section
         style={{
           maxWidth: 1200,
@@ -206,6 +214,8 @@ export default function Home() {
           display: "flex",
           flexDirection: "column",
           gap: 32,
+          position: "relative",
+          zIndex: 1,
         }}
       >
         <Hero />
@@ -217,38 +227,44 @@ export default function Home() {
             gap: 24,
           }}
         >
-          <WalletPanel
-            isConnected={isConnected}
-            address={address}
-            onConnect={() => connect({ connector: injected() })}
-            onDisconnect={disconnect}
-          />
-          <CreateForm
-            title={title}
-            desc={desc}
-            deposit={deposit}
-            totalRounds={totalRounds}
-            roundDuration={roundDuration}
-            startDelay={startDelay}
-            isConnected={isConnected}
-            isSubmitting={isSubmitting || isPending}
-            error={formError}
-            onTitle={setTitle}
-            onDesc={setDesc}
-            onDeposit={setDeposit}
-            onRounds={setTotalRounds}
-            onRoundDuration={setRoundDuration}
-            onStartDelay={setStartDelay}
-            onSubmit={createChallenge}
-          />
+          <SlideInLeft delay={0.2} trigger={false}>
+            <WalletPanel
+              isConnected={isConnected}
+              address={address}
+              onConnect={() => connect({ connector: injected() })}
+              onDisconnect={disconnect}
+            />
+          </SlideInLeft>
+          <SlideInRight delay={0.4} trigger={false}>
+            <CreateForm
+              title={title}
+              desc={desc}
+              deposit={deposit}
+              totalRounds={totalRounds}
+              roundDuration={roundDuration}
+              startDelay={startDelay}
+              isConnected={isConnected}
+              isSubmitting={isSubmitting || isPending}
+              error={formError}
+              onTitle={setTitle}
+              onDesc={setDesc}
+              onDeposit={setDeposit}
+              onRounds={setTotalRounds}
+              onRoundDuration={setRoundDuration}
+              onStartDelay={setStartDelay}
+              onSubmit={createChallenge}
+            />
+          </SlideInRight>
         </div>
 
-        <ChallengeGallery
-          addresses={challengeAddresses}
-          account={address}
-          refreshKey={refreshNonce}
-          onRefetch={triggerRefresh}
-        />
+        <ScaleIn delay={0.6} trigger={true}>
+          <ChallengeGallery
+            addresses={challengeAddresses}
+            account={address}
+            refreshKey={refreshNonce}
+            onRefetch={triggerRefresh}
+          />
+        </ScaleIn>
       </section>
     </main>
   );
@@ -256,62 +272,81 @@ export default function Home() {
 
 function Hero() {
   return (
-    <header
-      style={{
-        position: "relative",
-        borderRadius: 32,
-        padding: "52px 56px",
-        background:
-          "linear-gradient(120deg, rgba(59,130,246,0.25), rgba(236,72,153,0.22), rgba(14,165,233,0.18))",
-        border: "1px solid rgba(99,102,241,0.35)",
-        boxShadow: "0 40px 140px rgba(14,116,144,0.45)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          inset: "-20% -30% 10% -10%",
-          background:
-            "radial-gradient(circle, rgba(59,130,246,0.45), transparent 55%)",
-          opacity: 0.6,
-          filter: "blur(40px)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
+    <FadeIn delay={0} duration={1}>
+      <header
         style={{
           position: "relative",
-          display: "flex",
-          flexDirection: "column",
-          gap: 18,
+          borderRadius: 32,
+          padding: "52px 56px",
+          background:
+            "linear-gradient(120deg, rgba(59,130,246,0.25), rgba(236,72,153,0.22), rgba(14,165,233,0.18))",
+          border: "1px solid rgba(99,102,241,0.35)",
+          boxShadow: "0 40px 140px rgba(14,116,144,0.45)",
+          overflow: "hidden",
         }}
       >
-        <p style={{ letterSpacing: 4, fontSize: 13, opacity: 0.85 }}>
-          HERSOLIDITY · WEB3 CHALLENGE
-        </p>
-        <h1
+        <FloatingOrb
+          size={500}
+          color="rgba(59,130,246,0.4)"
+          className="absolute -top-20 -left-20"
+        />
+        <FloatingOrb
+          size={400}
+          color="rgba(236,72,153,0.3)"
+          className="absolute -bottom-20 -right-20"
+        />
+        <div
           style={{
-            fontSize: 48,
-            lineHeight: 1.1,
-            margin: 0,
-            fontWeight: 700,
-            backgroundImage:
-              "linear-gradient(120deg, #c7d2fe, #60a5fa, #f472b6)",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-            textShadow: "0 0 35px rgba(59,130,246,0.45)",
+            position: "absolute",
+            inset: "-20% -30% 10% -10%",
+            background:
+              "radial-gradient(circle, rgba(59,130,246,0.45), transparent 55%)",
+            opacity: 0.6,
+            filter: "blur(40px)",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+            zIndex: 1,
           }}
         >
-          押金激励的链上挑战 Demo
-        </h1>
-        <p style={{ fontSize: 17, opacity: 0.9, maxWidth: 640, lineHeight: 1.7 }}>
-          通过押金奖池 + 每日签到淘汰机制，展示从创建挑战、报名押金、链
-          上签到、结算到 NFT 纪念章的完整流程。所有逻辑由智能合约自动执行，
-          公平、透明、不可作假。
-        </p>
-      </div>
-    </header>
+          <FadeIn delay={0.3} duration={0.8} y={20}>
+            <p style={{ letterSpacing: 4, fontSize: 13, opacity: 0.85 }}>
+              HERSOLIDITY · WEB3 CHALLENGE
+            </p>
+          </FadeIn>
+          <h1
+            style={{
+              fontSize: 48,
+              lineHeight: 1.1,
+              margin: 0,
+              fontWeight: 700,
+              backgroundImage:
+                "linear-gradient(120deg, #c7d2fe, #60a5fa, #f472b6)",
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+              textShadow: "0 0 35px rgba(59,130,246,0.45)",
+            }}
+          >
+            <TextReveal delay={0.5} duration={0.03} splitBy="char">
+              押金激励的链上挑战 Demo
+            </TextReveal>
+          </h1>
+          <FadeIn delay={1.2} duration={0.8} y={20}>
+            <p style={{ fontSize: 17, opacity: 0.9, maxWidth: 640, lineHeight: 1.7 }}>
+              通过押金奖池 + 每日签到淘汰机制，展示从创建挑战、报名押金、链
+              上签到、结算到 NFT 纪念章的完整流程。所有逻辑由智能合约自动执行，
+              公平、透明、不可作假。
+            </p>
+          </FadeIn>
+        </div>
+      </header>
+    </FadeIn>
   );
 }
 
@@ -581,19 +616,103 @@ function ChallengeGallery({
   onRefetch: () => void;
 }) {
   const glowStyle = createGlowStyle(30, "rgba(14,165,233,0.45)");
+  const [hiddenAddresses, setHiddenAddresses] = useState<Set<string>>(new Set());
+  const [challengeStatuses, setChallengeStatuses] = useState<Map<string, number>>(new Map());
+
+  // 获取挑战状态
+  const publicClient = usePublicClient();
+  useEffect(() => {
+    if (!publicClient || addresses.length === 0) return;
+
+    const fetchStatuses = async () => {
+      const statusMap = new Map<string, number>();
+      await Promise.all(
+        addresses.map(async (addr) => {
+          try {
+            const summary = await publicClient.readContract({
+              address: addr,
+              abi: CHALLENGE_ABI,
+              functionName: "getSummary",
+            });
+            const status = Number(summary[7]);
+            statusMap.set(addr.toLowerCase(), status);
+          } catch (err) {
+            console.error(`Failed to fetch status for ${addr}:`, err);
+          }
+        })
+      );
+      setChallengeStatuses(statusMap);
+    };
+
+    fetchStatuses();
+  }, [addresses, publicClient, refreshKey]);
+
+  const handleClearFinished = () => {
+    const finishedAddresses = new Set<string>();
+    challengeStatuses.forEach((status, addr) => {
+      if (status === 2) {
+        finishedAddresses.add(addr);
+      }
+    });
+    setHiddenAddresses((prev) => {
+      const newSet = new Set(prev);
+      finishedAddresses.forEach((addr) => newSet.add(addr));
+      return newSet;
+    });
+  };
+
+  const visibleAddresses = addresses.filter(
+    (addr) => !hiddenAddresses.has(addr.toLowerCase())
+  );
 
   return (
     <section style={{ ...SECTION_CARD_STYLE, display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={glowStyle} />
       <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 22 }}>链上挑战列表</h2>
-          <p style={{ opacity: 0.7, margin: 0, fontSize: 14 }}>
-            当前已部署合约：{addresses.length}
-          </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22 }}>链上挑战列表</h2>
+            <p style={{ opacity: 0.7, margin: 0, fontSize: 14 }}>
+              当前已部署合约：{addresses.length} · 显示中：{visibleAddresses.length}
+            </p>
+          </div>
+          {visibleAddresses.length > 0 && (
+            <button
+              onClick={handleClearFinished}
+              style={{
+                borderRadius: 999,
+                padding: "10px 18px",
+                background: "rgba(239,68,68,0.18)",
+                border: "1px solid rgba(239,68,68,0.55)",
+                color: "#fca5a5",
+                cursor: "pointer",
+                fontSize: 13,
+                boxShadow: "0 10px 30px rgba(239,68,68,0.35)",
+                transition: "all 0.2s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.25)";
+                e.currentTarget.style.transform = "translateY(-1px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(239,68,68,0.18)";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              清空列表
+            </button>
+          )}
         </div>
 
-        {addresses.length === 0 ? (
+        {visibleAddresses.length === 0 ? (
           <div
             style={{
               padding: 36,
@@ -603,7 +722,9 @@ function ChallengeGallery({
               color: "rgba(226,232,240,0.8)",
             }}
           >
-            暂无挑战，快来率先创建吧！
+            {addresses.length === 0
+              ? "暂无挑战，快来率先创建吧！"
+              : "所有已结束的挑战已隐藏"}
           </div>
         ) : (
           <div
@@ -613,7 +734,7 @@ function ChallengeGallery({
               gap: 20,
             }}
           >
-            {addresses.map((addr) => (
+            {visibleAddresses.map((addr) => (
               <ChallengeCard
                 key={addr + refreshKey}
                 challengeAddress={addr}

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@wagmi/connectors": "^6.1.4",
+    "gsap": "^3.13.0",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
