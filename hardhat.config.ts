@@ -1,5 +1,6 @@
 import type { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import { resolve } from "path";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -11,6 +12,11 @@ const config: HardhatUserConfig = {
       },
       viaIR: true,
     },
+  },
+  paths: {
+    sources: "./contracts",
+    cache: "./cache",
+    artifacts: "./artifacts",
   },
 };
 
