@@ -5,7 +5,7 @@
       { "internalType": "string", "name": "_description", "type": "string" },
       { "internalType": "uint256", "name": "_depositAmount", "type": "uint256" },
       { "internalType": "uint256", "name": "_totalRounds", "type": "uint256" },
-      { "internalType": "uint256", "name": "_roundDuration", "type": "uint256" },
+      { "internalType": "uint256", "name": "_maxParticipants", "type": "uint256" },
       { "internalType": "uint256", "name": "_startDelaySeconds", "type": "uint256" }
     ],
     "name": "createChallenge",
@@ -33,7 +33,7 @@
       { "indexed": false, "internalType": "uint256", "name": "depositAmount", "type": "uint256" },
       { "indexed": false, "internalType": "uint256", "name": "startTime", "type": "uint256" },
       { "indexed": false, "internalType": "uint256", "name": "totalRounds", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "roundDuration", "type": "uint256" }
+      { "indexed": false, "internalType": "uint256", "name": "maxParticipants", "type": "uint256" }
     ],
     "name": "ChallengeCreated",
     "type": "event"

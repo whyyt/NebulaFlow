@@ -35,6 +35,7 @@ type ChallengeSummary = {
   rewardPerWinner: bigint;
   createdAt: number;
   poolBalance: bigint;
+  maxParticipants: number;
 };
 
 type TimeInfo = {
@@ -121,7 +122,7 @@ export default function Home() {
   const [desc, setDesc] = useState("");
   const [deposit, setDeposit] = useState("0.01");
   const [totalRounds, setTotalRounds] = useState(3);
-  const [roundDuration, setRoundDuration] = useState(5); // minutes
+  const [maxParticipants, setMaxParticipants] = useState(10);
   const [startDelay, setStartDelay] = useState(1); // minutes
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -138,36 +139,50 @@ export default function Home() {
       setFormError("请输入挑战标题与描述");
       return;
     }
-    if (Number(deposit) <= 0) {
+    if (Number(deposit) <= 0 || isNaN(Number(deposit))) {
       setFormError("押金必须大于 0");
       return;
     }
-    if (totalRounds <= 0) {
-      setFormError("挑战天数必须大于 0");
+    if (totalRounds <= 0 || !Number.isInteger(totalRounds)) {
+      setFormError("挑战天数必须为正整数");
       return;
     }
-    if (roundDuration < 1) {
-      setFormError("单轮时长至少 1 分钟");
+    if (!Number.isInteger(maxParticipants) || maxParticipants < 1 || maxParticipants > 10000) {
+      setFormError("最大参与人数必须为 1-10000 之间的整数");
       return;
     }
 
     try {
       setIsSubmitting(true);
       const depositWei = parseEther(deposit);
-      const roundSeconds = BigInt(roundDuration * 60);
       // startDelay 设为 0，因为挑战创建后不会自动开始，需要 creator 手动开始
       const startDelaySeconds = BigInt(0);
+
+      // 确保所有参数都是正确的类型
+      const titleStr = title.trim();
+      const descStr = desc.trim();
+      const totalRoundsBigInt = BigInt(Math.floor(totalRounds));
+      const maxParticipantsBigInt = BigInt(Math.floor(maxParticipants));
+
+      console.log("创建挑战参数:", {
+        title: titleStr,
+        description: descStr,
+        depositAmount: depositWei.toString(),
+        totalRounds: totalRoundsBigInt.toString(),
+        maxParticipants: maxParticipantsBigInt.toString(),
+        startDelaySeconds: startDelaySeconds.toString(),
+      });
 
       const hash = await writeContractAsync({
         address: FACTORY_ADDRESS,
         abi: FACTORY_ABI,
         functionName: "createChallenge",
         args: [
-          title.trim(),
-          desc.trim(),
+          titleStr,
+          descStr,
           depositWei,
-          BigInt(totalRounds),
-          roundSeconds,
+          totalRoundsBigInt,
+          maxParticipantsBigInt,
           startDelaySeconds,
         ],
       });
@@ -180,11 +195,26 @@ export default function Home() {
       setDesc("");
       setDeposit("0.01");
       setTotalRounds(3);
-      setRoundDuration(5);
+      setMaxParticipants(10);
       await triggerRefresh();
-    } catch (error) {
-      console.error(error);
-      setFormError("创建失败，请检查控制台日志或钱包提示");
+    } catch (error: any) {
+      console.error("创建挑战错误:", error);
+      let errorMessage = "创建失败，请检查控制台日志或钱包提示";
+      
+      if (error?.shortMessage) {
+        errorMessage = error.shortMessage;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      
+      // 处理用户拒绝交易的情况
+      if (errorMessage.includes("rejected") || errorMessage.includes("denied") || errorMessage.includes("User rejected")) {
+        errorMessage = "用户取消了交易";
+      }
+      
+      setFormError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -218,7 +248,14 @@ export default function Home() {
           zIndex: 1,
         }}
       >
-        <Hero />
+        <Hero>
+          <WalletPanel
+            isConnected={isConnected}
+            address={address}
+            onConnect={() => connect({ connector: injected() })}
+            onDisconnect={disconnect}
+          />
+        </Hero>
 
         <div
           style={{
@@ -227,21 +264,13 @@ export default function Home() {
             gap: 24,
           }}
         >
-          <SlideInLeft delay={0.2} trigger={false}>
-            <WalletPanel
-              isConnected={isConnected}
-              address={address}
-              onConnect={() => connect({ connector: injected() })}
-              onDisconnect={disconnect}
-            />
-          </SlideInLeft>
           <SlideInRight delay={0.4} trigger={false}>
             <CreateForm
               title={title}
               desc={desc}
               deposit={deposit}
               totalRounds={totalRounds}
-              roundDuration={roundDuration}
+              maxParticipants={maxParticipants}
               startDelay={startDelay}
               isConnected={isConnected}
               isSubmitting={isSubmitting || isPending}
@@ -250,7 +279,7 @@ export default function Home() {
               onDesc={setDesc}
               onDeposit={setDeposit}
               onRounds={setTotalRounds}
-              onRoundDuration={setRoundDuration}
+              onMaxParticipants={setMaxParticipants}
               onStartDelay={setStartDelay}
               onSubmit={createChallenge}
             />
@@ -270,7 +299,7 @@ export default function Home() {
   );
 }
 
-function Hero() {
+function Hero({ children }: { children?: React.ReactNode }) {
   return (
     <FadeIn delay={0} duration={1}>
       <header
@@ -283,6 +312,11 @@ function Hero() {
           border: "1px solid rgba(99,102,241,0.35)",
           boxShadow: "0 40px 140px rgba(14,116,144,0.45)",
           overflow: "hidden",
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 32,
+          flexWrap: "wrap",
         }}
       >
         <FloatingOrb
@@ -313,6 +347,7 @@ function Hero() {
             flexDirection: "column",
             gap: 18,
             zIndex: 1,
+            flex: 1,
           }}
         >
           <FadeIn delay={0.3} duration={0.8} y={20}>
@@ -345,6 +380,17 @@ function Hero() {
             </p>
           </FadeIn>
         </div>
+        {children && (
+          <div style={{ 
+            position: "relative", 
+            zIndex: 1, 
+            flexShrink: 0,
+            width: "100%",
+            maxWidth: 280,
+          }}>
+            {children}
+          </div>
+        )}
       </header>
     </FadeIn>
   );
@@ -371,33 +417,38 @@ function WalletPanel({
   const walletConnected = mounted && isConnected;
 
   return (
-    <div style={{ ...PANEL_CARD_STYLE, display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ 
+      ...PANEL_CARD_STYLE, 
+      display: "flex", 
+      flexDirection: "column", 
+      gap: 12,
+      padding: "20px",
+      minWidth: 240,
+      maxWidth: 280,
+    }}>
       <div style={glowStyle} />
-      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 20 }}>钱包状态</h2>
-          <p style={{ margin: 0, fontSize: 14, opacity: 0.7 }}>
-            使用浏览器钱包 (MetaMask 等) 来签名交易。
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>钱包状态</h2>
+          <p style={{ margin: "4px 0 0", fontSize: 11, opacity: 0.7 }}>
+            使用浏览器钱包签名交易
           </p>
         </div>
         {!walletConnected ? (
           <>
-            <p style={{ opacity: 0.8 }}>
-              一键连接后，可创建挑战、报名押金并执行签到。
-            </p>
             <button
               onClick={onConnect}
               style={{
                 border: "none",
                 borderRadius: 999,
-                padding: "12px 22px",
-                fontSize: 15,
+                padding: "10px 18px",
+                fontSize: 13,
                 background:
                   "linear-gradient(120deg, rgba(59,130,246,1), rgba(236,72,153,1))",
                 color: "#fff",
                 cursor: "pointer",
                 fontWeight: 600,
-                boxShadow: "0 10px 30px rgba(59,130,246,0.45)",
+                boxShadow: "0 8px 24px rgba(59,130,246,0.4)",
               }}
             >
               连接钱包
@@ -407,13 +458,14 @@ function WalletPanel({
           <>
             <div
               style={{
-                padding: 16,
-                borderRadius: 18,
+                padding: 12,
+                borderRadius: 12,
                 background:
                   "linear-gradient(120deg, rgba(59,130,246,0.15), rgba(59,130,246,0.05))",
                 wordBreak: "break-all",
-                fontSize: 14,
+                fontSize: 12,
                 border: "1px solid rgba(59,130,246,0.4)",
+                fontFamily: "monospace",
               }}
             >
               {address}
@@ -423,8 +475,8 @@ function WalletPanel({
               style={{
                 border: "1px solid rgba(255,255,255,0.35)",
                 borderRadius: 999,
-                padding: "10px 18px",
-                fontSize: 14,
+                padding: "8px 16px",
+                fontSize: 12,
                 background: "transparent",
                 color: "#e2e8f0",
                 cursor: "pointer",
@@ -444,7 +496,7 @@ type CreateFormProps = {
   desc: string;
   deposit: string;
   totalRounds: number;
-  roundDuration: number;
+  maxParticipants: number;
   startDelay: number;
   isConnected: boolean;
   isSubmitting: boolean;
@@ -453,7 +505,7 @@ type CreateFormProps = {
   onDesc: (value: string) => void;
   onDeposit: (value: string) => void;
   onRounds: (value: number) => void;
-  onRoundDuration: (value: number) => void;
+  onMaxParticipants: (value: number) => void;
   onStartDelay: (value: number) => void;
   onSubmit: () => void;
 };
@@ -464,7 +516,7 @@ function CreateForm(props: CreateFormProps) {
     desc,
     deposit,
     totalRounds,
-    roundDuration,
+    maxParticipants,
     startDelay,
     isConnected,
     isSubmitting,
@@ -473,7 +525,7 @@ function CreateForm(props: CreateFormProps) {
     onDesc,
     onDeposit,
     onRounds,
-    onRoundDuration,
+    onMaxParticipants,
     onStartDelay,
     onSubmit,
   } = props;
@@ -531,21 +583,41 @@ function CreateForm(props: CreateFormProps) {
             <input
               type="number"
               min={1}
+              max={365}
               value={totalRounds}
-              onChange={(e) => onRounds(Number(e.target.value))}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "") {
+                  return; // 允许空值，但不更新状态
+                }
+                const num = Number(value);
+                if (!isNaN(num) && Number.isInteger(num) && num >= 1 && num <= 365) {
+                  onRounds(num);
+                }
+              }}
               style={inputStyle}
             />
           </Field>
-          <Field label="每轮时长（分钟）">
+          <Field label="最大参与人数">
             <input
               type="number"
               min={1}
-              value={roundDuration}
-              onChange={(e) => onRoundDuration(Number(e.target.value))}
+              max={10000}
+              value={maxParticipants}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === "") {
+                  return; // 允许空值，但不更新状态
+                }
+                const num = Number(value);
+                if (!isNaN(num) && Number.isInteger(num) && num >= 1 && num <= 10000) {
+                  onMaxParticipants(num);
+                }
+              }}
               style={inputStyle}
             />
             <p style={{ margin: "4px 0 0", fontSize: 12, opacity: 0.7 }}>
-              每轮签到的时间长度，在该轮次结束前任意时间都可以签到
+              限制挑战的最大参与人数 (1-10000)
             </p>
           </Field>
         </div>
@@ -823,6 +895,7 @@ function ChallengeCard({
           rewardPerWinner: summaryData[11],
           createdAt: Number(summaryData[12]),
           poolBalance: summaryData[13],
+          maxParticipants: Number(summaryData[14] ?? 0),
         });
 
         setTimeInfo({
@@ -948,6 +1021,8 @@ function ChallengeCard({
             simulateError = "您跳过了轮次，无法签到";
           } else if (simulateError.includes('MISSED_PREVIOUS_ROUND')) {
             simulateError = "您错过了上一轮签到，已被淘汰";
+          } else if (simulateError.includes('MAX_PARTICIPANTS_REACHED')) {
+            simulateError = "已达到最大参与人数限制";
           } else if (simulateError.includes('revert')) {
             simulateError = "操作失败: " + simulateError;
           }
@@ -1025,6 +1100,8 @@ function ChallengeCard({
         errorMessage = "您跳过了轮次，无法签到";
       } else if (errorMessage.includes('MISSED_PREVIOUS_ROUND')) {
         errorMessage = "您错过了上一轮签到，已被淘汰";
+      } else if (errorMessage.includes('MAX_PARTICIPANTS_REACHED')) {
+        errorMessage = "已达到最大参与人数限制";
       }
       
       setError(errorMessage);
@@ -1100,8 +1177,8 @@ function ChallengeCard({
                 )} ETH`}
               />
               <InfoBlock
-                label="参赛 / 存活"
-                value={`${summary.totalParticipants} 人 / ${summary.aliveCount} 人`}
+                label="参赛 / 最大 / 存活"
+                value={`${summary.totalParticipants} / ${summary.maxParticipants || "-"} / ${summary.aliveCount} 人`}
               />
               <InfoBlock
                 label="当前轮次"

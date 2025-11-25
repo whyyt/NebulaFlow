@@ -13,7 +13,7 @@ contract ChallengeFactory {
         uint256 depositAmount,
         uint256 startTime,
         uint256 totalRounds,
-        uint256 roundDuration
+        uint256 maxParticipants
     );
 
     function createChallenge(
@@ -21,7 +21,7 @@ contract ChallengeFactory {
         string memory _description,
         uint256 _depositAmount,
         uint256 _totalRounds,
-        uint256 _roundDuration,
+        uint256 _maxParticipants,
         uint256 /* _startDelaySeconds - 已废弃，保留以保持 ABI 兼容性 */
     ) external returns (address) {
         require(bytes(_title).length > 0, "TITLE_REQUIRED");
@@ -35,7 +35,7 @@ contract ChallengeFactory {
             msg.sender,
             _depositAmount,
             _totalRounds,
-            _roundDuration,
+            _maxParticipants,
             startTime
         );
 
@@ -48,7 +48,7 @@ contract ChallengeFactory {
             _depositAmount,
             startTime,
             _totalRounds,
-            _roundDuration
+            _maxParticipants
         );
 
         return address(newChallenge);

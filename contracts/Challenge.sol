@@ -24,7 +24,8 @@ contract Challenge {
     uint256 public startTime;
     uint256 public depositAmount;
     uint256 public totalRounds;
-    uint256 public roundDuration;
+    uint256 public roundDuration; // 固定为 1 天 (86400 秒)
+    uint256 public maxParticipants;
 
     Status public status;
     uint256 public aliveCount;
@@ -58,12 +59,12 @@ contract Challenge {
         address _creator,
         uint256 _depositAmount,
         uint256 _totalRounds,
-        uint256 _roundDuration,
+        uint256 _maxParticipants,
         uint256 _startTime
     ) {
         require(_depositAmount > 0, "ZERO_DEPOSIT");
         require(_totalRounds > 0 && _totalRounds <= 90, "INVALID_ROUNDS");
-        require(_roundDuration >= 60, "ROUND_TOO_SHORT");
+        require(_maxParticipants > 0, "ZERO_MAX_PARTICIPANTS");
         // startTime 为 0 表示未开始，需要 creator 手动开始
         require(_startTime == 0 || _startTime >= block.timestamp, "START_IN_PAST");
 
@@ -72,7 +73,8 @@ contract Challenge {
         creator = _creator;
         depositAmount = _depositAmount;
         totalRounds = _totalRounds;
-        roundDuration = _roundDuration;
+        maxParticipants = _maxParticipants;
+        roundDuration = 86400; // 固定为 1 天 (24 * 60 * 60 秒)
         startTime = _startTime;
         createdAt = block.timestamp;
         status = Status.Scheduled;
@@ -88,6 +90,7 @@ contract Challenge {
         // 如果 startTime 为 0，表示未开始，允许报名；否则检查是否已开始
         require(startTime == 0 || block.timestamp < startTime, "ALREADY_STARTED");
         require(msg.value == depositAmount, "WRONG_DEPOSIT");
+        require(participantList.length < maxParticipants, "MAX_PARTICIPANTS_REACHED");
 
         Participant storage p = participantInfo[msg.sender];
         require(!p.joined, "ALREADY_JOINED");
@@ -334,9 +337,10 @@ contract Challenge {
             uint256,
             uint256,
             uint256,
+            uint256,
             uint256
         )
-    {
+        {
         Status computedStatus = viewStatus();
         return (
             title,
@@ -352,7 +356,8 @@ contract Challenge {
             winnersCount,
             rewardPerWinner,
             createdAt,
-            address(this).balance
+            address(this).balance,
+            maxParticipants
         );
     }
 
