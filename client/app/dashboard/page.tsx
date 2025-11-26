@@ -4,23 +4,41 @@ import { useState, useEffect } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { ActivityDashboard } from "../../components/activities/ActivityDashboard";
 import { ActivityMetadata } from "../../lib/types";
-import { ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
+import { ACTIVITY_REGISTRY_ABI, ACTIVITY_FACTORY_ABI } from "../../lib/activityRegistry";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x0000000000000000000000000000000000000000"; // 待部署
+const ACTIVITY_FACTORY_ADDRESS = "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1"; // ActivityFactory 合约地址（最新部署）
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [activities, setActivities] = useState<ActivityMetadata[]>([]);
   const [loading, setLoading] = useState(true);
+  const [registryAddress, setRegistryAddress] = useState<`0x${string}` | null>(null);
+
+  // 从 ActivityFactory 获取 ActivityRegistry 地址
+  const { data: activityRegistryAddress } = useReadContract({
+    address: ACTIVITY_FACTORY_ADDRESS as `0x${string}`,
+    abi: ACTIVITY_FACTORY_ABI,
+    functionName: "activityRegistry",
+    query: {
+      enabled: !!ACTIVITY_FACTORY_ADDRESS
+    }
+  });
+
+  // 当获取到 ActivityRegistry 地址后，更新状态
+  useEffect(() => {
+    if (activityRegistryAddress) {
+      setRegistryAddress(activityRegistryAddress as `0x${string}`);
+    }
+  }, [activityRegistryAddress]);
 
   // 获取用户的活动ID列表
   const { data: activityIds, refetch } = useReadContract({
-    address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+    address: registryAddress || undefined,
     abi: ACTIVITY_REGISTRY_ABI,
     functionName: "getUserActivities",
     args: address ? [address] : undefined,
     query: {
-      enabled: !!address && isConnected
+      enabled: !!address && isConnected && !!registryAddress
     }
   });
 

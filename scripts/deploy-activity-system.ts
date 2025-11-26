@@ -21,21 +21,6 @@ async function main() {
   const factoryAddress = await activityFactory.getAddress();
   console.log("ActivityFactory 地址:", factoryAddress);
 
-  // 3. 部署 NFTReward 示例（可选，用于测试）
-  console.log("\n3. 部署 NFTReward 示例...");
-  const NFTReward = await ethers.getContractFactory("NFTReward");
-  const nftReward = await NFTReward.deploy(
-    "Test NFT",
-    "TNFT",
-    "https://api.example.com/metadata/",
-    registryAddress,
-    0, // 临时activityId
-    deployer.address
-  );
-  await nftReward.waitForDeployment();
-  const nftAddress = await nftReward.getAddress();
-  console.log("NFTReward 示例地址:", nftAddress);
-
   console.log("\n✅ 部署完成！");
   console.log("\n请更新前端配置中的以下地址：");
   console.log(`ACTIVITY_REGISTRY_ADDRESS = "${registryAddress}"`);
@@ -48,4 +33,5 @@ main()
     console.error(error);
     process.exit(1);
   });
+
 

@@ -12,10 +12,26 @@ export default function Home() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const [mounted, setMounted] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrollY(window.scrollY);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // 计算hero section的透明度（滚动时淡出）
+  const heroOpacity = Math.max(0, 1 - scrollY / 400);
+  
+  // 计算下方内容的透明度（滚动时淡入）
+  const contentOpacity = Math.min(1, Math.max(0, (scrollY - 150) / 300));
 
   return (
     <main
@@ -27,18 +43,18 @@ export default function Home() {
         position: "relative",
         overflow: "hidden",
         backgroundColor: "#0a0a0f",
-      }}
-    >
+        }}
+      >
       {/* 渐变背景 */}
-      <div
-        style={{
+        <div
+          style={{
           position: "absolute",
           inset: 0,
           background:
             "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent), radial-gradient(ellipse 60% 40% at 50% 100%, rgba(236, 72, 153, 0.2), transparent)",
           zIndex: 0,
         }}
-      />
+          />
 
       <ParticleField count={20} />
 
@@ -59,7 +75,8 @@ export default function Home() {
           borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
         }}
       >
-        <div
+        <Link
+          href="/"
           style={{
             fontSize: 24,
               fontWeight: 700,
@@ -67,14 +84,23 @@ export default function Home() {
               WebkitBackgroundClip: "text",
               color: "transparent",
             letterSpacing: 1,
+            textDecoration: "none",
+            cursor: "pointer",
           }}
         >
           NebulaFlow
-        </div>
+        </Link>
 
-        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+    <div style={{ 
+      display: "flex", 
+          gap: 32, 
+          alignItems: "center",
+          position: "absolute",
+          left: "50%",
+          transform: "translateX(-50%)",
+        }}>
           <Link
-            href="/create"
+            href="/features"
               style={{
               color: "#ffffff",
               textDecoration: "none",
@@ -85,11 +111,11 @@ export default function Home() {
             }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
-          >
-            创建活动
+            >
+            功能特性
           </Link>
           <Link
-            href="/dashboard"
+            href="/activities"
               style={{
               color: "#ffffff",
               textDecoration: "none",
@@ -101,8 +127,26 @@ export default function Home() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
+            活动库
+          </Link>
+          <Link
+            href="/profile"
+              style={{
+              color: "#ffffff",
+              textDecoration: "none",
+              fontSize: 15,
+              fontWeight: 500,
+              opacity: 0.9,
+              transition: "opacity 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
+            >
             我的档案
           </Link>
+      </div>
+        
+        <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
           {mounted && (
             <button
               onClick={() => {
@@ -110,7 +154,7 @@ export default function Home() {
                   connect({ connector: injected() });
                 }
               }}
-              style={{
+          style={{
                 padding: "10px 24px",
                 borderRadius: 12,
                 border: "1px solid rgba(255, 255, 255, 0.3)",
@@ -119,7 +163,7 @@ export default function Home() {
                   : "linear-gradient(135deg, rgba(120, 119, 198, 0.3), rgba(236, 72, 153, 0.3))",
                 color: "#ffffff",
                 fontSize: 14,
-                fontWeight: 600,
+            fontWeight: 600,
                 cursor: isConnected ? "default" : "pointer",
                 transition: "all 0.2s",
               }}
@@ -139,34 +183,37 @@ export default function Home() {
               {isConnected
                 ? `${address?.slice(0, 6)}...${address?.slice(-4)}`
                 : "连接钱包"}
-            </button>
+        </button>
         )}
       </div>
       </nav>
 
       {/* Hero Section - 第一部分：主副标题垂直居中 */}
-      <div
-        style={{
+            <div
+      style={{
           position: "relative",
           zIndex: 1,
           minHeight: "100vh",
-          display: "flex",
-          flexDirection: "column",
+        display: "flex",
+        flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           padding: "80px 24px",
+          opacity: heroOpacity,
+          transition: "opacity 0.3s ease-out",
+          pointerEvents: heroOpacity > 0.1 ? "auto" : "none",
         }}
       >
         {/* Logo */}
         <FadeIn delay={0.3} duration={1}>
-          <div
-            style={{
+        <div
+          style={{
               marginBottom: 60,
-              display: "flex",
-              alignItems: "center",
+            display: "flex",
+            alignItems: "center",
               justifyContent: "center",
-            }}
-          >
+          }}
+        >
             <Logo
               size={240}
               style={{
@@ -174,7 +221,7 @@ export default function Home() {
                 filter: "drop-shadow(0 0 20px rgba(167, 139, 250, 0.5))",
               }}
             />
-          </div>
+        </div>
         </FadeIn>
 
         {/* 主标题 */}
@@ -207,223 +254,28 @@ export default function Home() {
               lineHeight: 1.4,
             }}
           >
-            Stake-based challenges show your consistency across days. NFT-based events capture your presence in key moments. Together, they form a verifiable on-chain profile you truly own.
+            Stake-based challenges show your consistency across days. Complete challenges to earn rewards from the deposit pool. Build a verifiable on-chain activity record you truly own.
           </p>
         </FadeIn>
       </div>
 
-      {/* 第二部分：按钮和功能特性 */}
+      {/* 第二部分：空内容区域（保持滚动效果） */}
       <div
-      style={{
+        style={{
           position: "relative",
           zIndex: 1,
           paddingTop: "80px",
           paddingBottom: "80px",
           minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
+          display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          opacity: contentOpacity,
+          transition: "opacity 0.3s ease-in",
+          pointerEvents: contentOpacity > 0.1 ? "auto" : "none",
         }}
       >
-        {/* 行动按钮 */}
-        <FadeIn delay={0.2} duration={0.8}>
-        <div
-          style={{
-            display: "flex",
-              gap: 20,
-            flexWrap: "wrap",
-              justifyContent: "center",
-              marginBottom: 120,
-            }}
-          >
-            <Link
-              href="/create"
-              style={{
-                padding: "16px 32px",
-                borderRadius: 12,
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                background: "rgba(255, 255, 255, 0.1)",
-                color: "#ffffff",
-                textDecoration: "none",
-                fontSize: 16,
-                fontWeight: 600,
-                transition: "all 0.3s",
-                backdropFilter: "blur(10px)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = "0 10px 30px rgba(255, 255, 255, 0.2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
-              创建活动
-            </Link>
-            <Link
-              href="/dashboard"
-            style={{
-                padding: "16px 32px",
-                borderRadius: 12,
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                background: "rgba(255, 255, 255, 0.1)",
-                color: "#ffffff",
-                textDecoration: "none",
-                fontSize: 16,
-                fontWeight: 600,
-                transition: "all 0.3s",
-                backdropFilter: "blur(10px)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
-                e.currentTarget.style.transform = "translateY(-2px)";
-                e.currentTarget.style.boxShadow = "0 10px 30px rgba(255, 255, 255, 0.2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
-              查看档案
-            </Link>
-          </div>
-        </FadeIn>
-
-        {/* 功能特性 */}
-        <FadeIn delay={0.4} duration={0.8}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-              gap: 32,
-              maxWidth: 1200,
-              width: "100%",
-              padding: "0 24px",
-            }}
-          >
-            <div
-      style={{
-                padding: 32,
-                borderRadius: 20,
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(10px)",
-                textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-                  fontSize: 40,
-                  marginBottom: 16,
-                }}
-              >
-                🎯
-      </div>
-              <h3
-                style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  margin: "0 0 12px 0",
-                }}
-              >
-                三种活动类别
-              </h3>
-              <p
-                style={{
-                  fontSize: 14,
-                  opacity: 0.8,
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                Professional Web3、Social Web3、Lifestyle，满足不同场景需求
-              </p>
-            </div>
-
-            <div
-              style={{
-                padding: 32,
-                borderRadius: 20,
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(10px)",
-                textAlign: "center",
-              }}
-            >
-            <div
-              style={{
-                  fontSize: 40,
-                  marginBottom: 16,
-                }}
-              >
-                💎
-              </div>
-              <h3
-                style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  margin: "0 0 12px 0",
-                }}
-              >
-                双重激励机制
-              </h3>
-              <p
-                style={{
-                  fontSize: 14,
-                  opacity: 0.8,
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                押金奖池与NFT奖励，灵活配置激励方式
-              </p>
-            </div>
-
-    <div
-      style={{
-                padding: 32,
-                borderRadius: 20,
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(10px)",
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 40,
-                  marginBottom: 16,
-                }}
-              >
-                🔐
-    </div>
-              <h3
-      style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  margin: "0 0 12px 0",
-                }}
-              >
-                公开/私密档案
-              </h3>
-              <p
-                style={{
-                  fontSize: 14,
-                  opacity: 0.8,
-                  lineHeight: 1.6,
-                  margin: 0,
-                }}
-              >
-                智能分类管理，保护隐私的同时展示成就
-              </p>
-            </div>
-          </div>
-        </FadeIn>
       </div>
     </main>
   );
