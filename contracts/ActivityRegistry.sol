@@ -7,10 +7,12 @@ contract ActivityRegistry {
     struct ActivityMetadata {
         address activityContract;  // Challenge 合约地址
         address creator;
+        string creatorName;  // 活动创建者名称（用于显示，替换地址）
         string title;
         string description;
         uint256 createdAt;
         bool isPublic;  // 是否公开显示
+        uint8 incentiveType;  // 激励类型：0=押金池，可扩展其他类型
     }
 
     // activityId => ActivityMetadata
@@ -36,55 +38,48 @@ contract ActivityRegistry {
     /// @param _title 活动标题
     /// @param _description 活动描述
     /// @param _isPublic 是否公开
+    /// @param _incentiveType 激励类型 (0=押金池，可扩展其他类型)
+    /// @param _creator 活动创建者地址（可选，如果不提供则使用 msg.sender）
+    /// @param _creatorName 活动创建者名称（用于显示，替换地址）
     function registerActivity(
         address _activityContract,
         string memory _title,
         string memory _description,
-        bool _isPublic
+        bool _isPublic,
+        uint8 _incentiveType,
+        address _creator,
+        string memory _creatorName
     ) external returns (uint256) {
         require(_activityContract != address(0), "INVALID_CONTRACT");
         require(bytes(_title).length > 0, "TITLE_REQUIRED");
+        require(bytes(_creatorName).length > 0, "CREATOR_NAME_REQUIRED");
+        // incentiveType 验证已移除，允许扩展新的激励类型
+        
+        // 如果提供了 _creator，使用它；否则使用 msg.sender
+        address creator = _creator != address(0) ? _creator : msg.sender;
 
-        uint256 activityId = activityCount++;
+        uint256 activityId = ++activityCount; // 从 1 开始，避免 activityId = 0
         activities[activityId] = ActivityMetadata({
             activityContract: _activityContract,
-            creator: msg.sender,
+            creator: creator,
+            creatorName: _creatorName,
             title: _title,
             description: _description,
             createdAt: block.timestamp,
-            isPublic: _isPublic
+            isPublic: _isPublic,
+            incentiveType: _incentiveType
         });
 
         contractToActivity[_activityContract] = activityId;
 
         emit ActivityRegistered(
             activityId,
-            msg.sender,
+            creator,
             _activityContract,
             _title
         );
 
         return activityId;
-    }
-
-    /// @notice 用户加入活动时调用（由前端或合约调用）
-    function addUserActivity(address _user, address _activityContract) external {
-        uint256 activityId = contractToActivity[_activityContract];
-        require(activityId > 0 || activities[activityId].activityContract != address(0), "ACTIVITY_NOT_FOUND");
-
-        // 检查是否已添加
-        uint256[] storage userActs = userActivities[_user];
-        bool alreadyAdded = false;
-        for (uint256 i = 0; i < userActs.length; i++) {
-            if (userActs[i] == activityId) {
-                alreadyAdded = true;
-                break;
-            }
-        }
-
-        if (!alreadyAdded) {
-            userActivities[_user].push(activityId);
-        }
     }
 
     /// @notice 获取用户的所有活动ID
@@ -101,26 +96,32 @@ contract ActivityRegistry {
     /// @param _activityId 活动ID
     /// @return activityContract 活动合约地址
     /// @return creator 创建者地址
+    /// @return creatorName 创建者名称
     /// @return title 活动标题
     /// @return description 活动描述
     /// @return createdAt 创建时间戳
     /// @return isPublic 是否公开
+    /// @return incentiveType 激励类型 (0=押金池，可扩展其他类型)
     function getActivityMetadataTuple(uint256 _activityId) external view returns (
         address activityContract,
         address creator,
+        string memory creatorName,
         string memory title,
         string memory description,
         uint256 createdAt,
-        bool isPublic
+        bool isPublic,
+        uint8 incentiveType
     ) {
         ActivityMetadata memory metadata = activities[_activityId];
         return (
             metadata.activityContract,
             metadata.creator,
+            metadata.creatorName,
             metadata.title,
             metadata.description,
             metadata.createdAt,
-            metadata.isPublic
+            metadata.isPublic,
+            metadata.incentiveType
         );
     }
 

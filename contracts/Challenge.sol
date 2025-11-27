@@ -45,7 +45,6 @@ contract Challenge {
     event CheckIn(address indexed user, uint256 day, uint256 timestamp);
     event Eliminated(address indexed user, uint256 missedRound);
     event Settled(uint256 winners, uint256 rewardPerWinner);
-    event RewardClaimed(address indexed user, uint256 amount);
     event Distributed(uint256 total, uint256 perUser); // 自动分配事件
 
     modifier nonReentrant() {
@@ -243,186 +242,7 @@ contract Challenge {
         emit CheckIn(msg.sender, currentDay, block.timestamp);
     }
 
-    function eliminate(address user) external {
-        _syncStatus();
-        require(status == Status.Active, "NOT_ACTIVE");
-        Participant storage p = participantInfo[user];
-        require(p.joined && !p.eliminated, "CANNOT_ELIMINATE");
 
-        uint256 round = currentRound();
-        uint256 requiredRound = p.lastCheckInRound == NOT_CHECKED
-            ? 0
-            : p.lastCheckInRound + 1;
-        require(round > requiredRound, "WITHIN_WINDOW");
-
-        _eliminate(p, user, requiredRound);
-    }
-
-    function settle() public nonReentrant {
-        _syncStatus();
-        require(status != Status.Settled, "ALREADY_SETTLED");
-        require(block.timestamp >= endTime(), "ONGOING");
-
-        uint256 finalRound = totalRounds - 1;
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (!p.joined || p.eliminated) {
-                continue;
-            }
-            bool finished = p.lastCheckInRound != NOT_CHECKED &&
-                p.lastCheckInRound == finalRound;
-            if (finished) {
-                p.isCompleted = true;
-            } else {
-                uint256 missedRound = p.lastCheckInRound == NOT_CHECKED
-                    ? 0
-                    : p.lastCheckInRound + 1;
-                _eliminate(p, user, missedRound);
-            }
-        }
-
-        status = Status.Settled;
-        settledAt = block.timestamp;
-        
-        // 统计完成者
-        uint256 completedCount = 0;
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (p.joined && !p.eliminated && p.isCompleted) {
-                completedCount++;
-            }
-        }
-        
-        winnersCount = completedCount;
-        uint256 balance = address(this).balance;
-        
-        if (winnersCount == 0) {
-            if (balance > 0) {
-                (bool sentCreator, ) = creator.call{value: balance}("");
-                require(sentCreator, "CREATOR_TRANSFER_FAIL");
-            }
-            emit Settled(0, 0);
-            emit Distributed(0, 0);
-            return;
-        }
-
-        require(winnersCount > 0, "NO_WINNERS");
-        rewardPerWinner = balance / winnersCount;
-        uint256 totalPayout = rewardPerWinner * winnersCount;
-        uint256 remainder = balance - totalPayout;
-
-        // 自动分配奖励
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (p.joined && !p.eliminated && p.isCompleted) {
-                p.rewardClaimed = true;
-                (bool success, ) = user.call{value: rewardPerWinner}("");
-                require(success, "PAYOUT_FAIL");
-            }
-        }
-
-        if (remainder > 0) {
-            (bool sent, ) = creator.call{value: remainder}("");
-            require(sent, "REMAINDER_FAIL");
-        }
-
-        emit Settled(winnersCount, rewardPerWinner);
-        emit Distributed(balance, rewardPerWinner);
-    }
-
-    function forceSettle() external nonReentrant {
-        require(msg.sender == creator, "ONLY_CREATOR");
-        require(status != Status.Settled, "ALREADY_SETTLED");
-        require(status == Status.Active, "NOT_ACTIVE");
-        
-        uint256 finalRound = totalRounds - 1;
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (!p.joined || p.eliminated) {
-                continue;
-            }
-            bool finished = p.lastCheckInRound != NOT_CHECKED &&
-                p.lastCheckInRound == finalRound;
-            if (finished) {
-                p.isCompleted = true;
-            } else {
-                uint256 missedRound = p.lastCheckInRound == NOT_CHECKED
-                    ? 0
-                    : p.lastCheckInRound + 1;
-                _eliminate(p, user, missedRound);
-            }
-        }
-
-        status = Status.Settled;
-        settledAt = block.timestamp;
-        
-        // 统计完成者
-        uint256 completedCount = 0;
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (p.joined && !p.eliminated && p.isCompleted) {
-                completedCount++;
-            }
-        }
-        
-        winnersCount = completedCount;
-        uint256 balance = address(this).balance;
-        
-        if (winnersCount == 0) {
-            if (balance > 0) {
-                (bool sentCreator, ) = creator.call{value: balance}("");
-                require(sentCreator, "CREATOR_TRANSFER_FAIL");
-            }
-            emit Settled(0, 0);
-            emit Distributed(0, 0);
-            return;
-        }
-
-        require(winnersCount > 0, "NO_WINNERS");
-        rewardPerWinner = balance / winnersCount;
-        uint256 totalPayout = rewardPerWinner * winnersCount;
-        uint256 remainder = balance - totalPayout;
-
-        // 自动分配奖励
-        for (uint256 i = 0; i < participantList.length; i++) {
-            address user = participantList[i];
-            Participant storage p = participantInfo[user];
-            if (p.joined && !p.eliminated && p.isCompleted) {
-                p.rewardClaimed = true;
-                (bool success, ) = user.call{value: rewardPerWinner}("");
-                require(success, "PAYOUT_FAIL");
-            }
-        }
-
-        if (remainder > 0) {
-            (bool sent, ) = creator.call{value: remainder}("");
-            require(sent, "REMAINDER_FAIL");
-        }
-
-        emit Settled(winnersCount, rewardPerWinner);
-        emit Distributed(balance, rewardPerWinner);
-    }
-
-    function claimReward() external nonReentrant {
-        require(status == Status.Settled, "NOT_SETTLED");
-        Participant storage p = participantInfo[msg.sender];
-        require(p.joined, "NOT_PARTICIPANT");
-        require(!p.eliminated, "NOT_WINNER");
-        require(!p.rewardClaimed, "ALREADY_CLAIMED");
-        require(winnersCount > 0, "NO_WINNERS");
-        require(rewardPerWinner > 0, "NO_REWARD");
-
-        p.rewardClaimed = true;
-        (bool success, ) = msg.sender.call{value: rewardPerWinner}("");
-        require(success, "PAYOUT_FAIL");
-
-        emit RewardClaimed(msg.sender, rewardPerWinner);
-    }
 
     // ------------------------
     // 只读视图
@@ -474,7 +294,7 @@ contract Challenge {
         view
         returns (uint256 currentRoundNumber, uint256 endTimestamp, bool started, bool finished)
     {
-        uint256 round = viewCurrentRound();
+        uint256 round = currentRound();
         return (round, endTime(), block.timestamp >= startTime, block.timestamp >= endTime());
     }
 
@@ -541,19 +361,6 @@ contract Challenge {
         return round;
     }
 
-    function viewCurrentRound() public view returns (uint256) {
-        // 如果 startTime 为 0，表示未开始
-        if (startTime == 0) {
-            return 0;
-        }
-        
-        uint256 elapsed = block.timestamp >= startTime ? block.timestamp - startTime : 0;
-        uint256 round = elapsed / roundDuration;
-        if (round >= totalRounds) {
-            return totalRounds;
-        }
-        return round;
-    }
 
     function endTime() public view returns (uint256) {
         // 如果 startTime 为 0，返回 0 表示未开始
@@ -588,25 +395,6 @@ contract Challenge {
         }
         if (status == Status.Scheduled && block.timestamp >= startTime) {
             status = Status.Active;
-        }
-    }
-
-    function _updateElimination(
-        Participant storage p,
-        address user,
-        uint256 round
-    ) internal {
-        if (p.eliminated) {
-            return;
-        }
-        if (p.lastCheckInRound == NOT_CHECKED) {
-            if (round > 0) {
-                _eliminate(p, user, 0);
-            }
-            return;
-        }
-        if (round > p.lastCheckInRound + 1) {
-            _eliminate(p, user, p.lastCheckInRound + 1);
         }
     }
 

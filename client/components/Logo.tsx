@@ -15,7 +15,7 @@ interface LogoProps {
  * 从中心点向上扩散的4条弧线，最外层弧线最粗，向内逐层变细，形成从密集到扩散的视觉节奏
  * 带有光线流动动画效果
  */
-export function Logo({ size = 200, className, style }: LogoProps) {
+export default function Logo({ size = 200, className, style }: LogoProps) {
   const viewBox = "0 0 200 200";
   
   return (

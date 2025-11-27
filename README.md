@@ -44,7 +44,6 @@ npx hardhat run scripts/deploy-activity-system.ts --network localhost
 
 - `client/app/create/page.tsx`
 - `client/app/activities/page.tsx`
-- `client/app/all-activities/page.tsx`
 - `client/app/dashboard/page.tsx`
 - `client/app/profile/page.tsx`
 

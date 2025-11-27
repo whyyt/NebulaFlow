@@ -5,7 +5,7 @@ import { useAccount, useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { FadeIn } from "../components/animations/FadeIn";
 import { ParticleField } from "../components/animations/ParticleField";
-import { Logo } from "../components/Logo";
+import Logo from "../components/Logo";
 import Link from "next/link";
 
 export default function Home() {
@@ -112,7 +112,7 @@ export default function Home() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
             >
-            功能特性
+            Core Features
           </Link>
           <Link
             href="/activities"
@@ -127,7 +127,7 @@ export default function Home() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
-            活动库
+            Activity Hub
           </Link>
           <Link
             href="/profile"
@@ -142,7 +142,7 @@ export default function Home() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
             >
-            我的档案
+            My Journey
           </Link>
       </div>
         

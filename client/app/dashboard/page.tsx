@@ -3,10 +3,11 @@
 import { useState, useEffect } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { ActivityDashboard } from "../../components/activities/ActivityDashboard";
+import { ParticleField } from "../../components/animations/ParticleField";
 import { ActivityMetadata } from "../../lib/types";
 import { ACTIVITY_REGISTRY_ABI, ACTIVITY_FACTORY_ABI } from "../../lib/activityRegistry";
 
-const ACTIVITY_FACTORY_ADDRESS = "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1"; // ActivityFactory 合约地址（最新部署）
+const ACTIVITY_FACTORY_ADDRESS = "0x4A679253410272dd5232B3Ff7cF5dbB88f295319"; // ActivityFactory 合约地址（最新部署）
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
@@ -89,22 +90,29 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "linear-gradient(180deg, #0a0a0f 0%, #1a0a1f 100%)",
-      position: "relative",
-      overflow: "hidden",
-    }}>
-      {/* 背景装饰 */}
+    <div
+      style={{
+        minHeight: "100vh",
+        fontFamily:
+          "'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+        color: "#ffffff",
+        position: "relative",
+        overflow: "hidden",
+        backgroundColor: "#0a0a0f",
+      }}
+    >
+      {/* 渐变背景 */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.2), transparent), radial-gradient(ellipse 60% 40% at 50% 100%, rgba(236, 72, 153, 0.15), transparent)",
+            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent)",
           zIndex: 0,
         }}
       />
+
+      <ParticleField count={20} />
 
       <div style={{
         position: "relative",

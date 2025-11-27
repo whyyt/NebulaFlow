@@ -1,5 +1,4 @@
-import { ActivityRegistry } from "../../typechain-types";
-import { ActivityMetadata } from "./types";
+import { ActivityMetadata, IncentiveType } from "./types";
 
 // ActivityRegistry ABI (简化版，实际应从合约生成)
 export const ACTIVITY_REGISTRY_ABI = [
@@ -10,19 +9,11 @@ export const ACTIVITY_REGISTRY_ABI = [
       { name: "_activityContract", type: "address", internalType: "address" },
       { name: "_title", type: "string", internalType: "string" },
       { name: "_description", type: "string", internalType: "string" },
-      { name: "_isPublic", type: "bool", internalType: "bool" }
+      { name: "_isPublic", type: "bool", internalType: "bool" },
+      { name: "_incentiveType", type: "uint8", internalType: "uint8" },
+      { name: "_creator", type: "address", internalType: "address" }
     ],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
-    stateMutability: "nonpayable"
-  },
-  {
-    type: "function",
-    name: "addUserActivity",
-    inputs: [
-      { name: "_user", type: "address", internalType: "address" },
-      { name: "_activityContract", type: "address", internalType: "address" }
-    ],
-    outputs: [],
     stateMutability: "nonpayable"
   },
   {
@@ -72,10 +63,12 @@ export const ACTIVITY_REGISTRY_ABI = [
     outputs: [
       { name: "activityContract", type: "address", internalType: "address" },
       { name: "creator", type: "address", internalType: "address" },
+      { name: "creatorName", type: "string", internalType: "string" },
       { name: "title", type: "string", internalType: "string" },
       { name: "description", type: "string", internalType: "string" },
       { name: "createdAt", type: "uint256", internalType: "uint256" },
-      { name: "isPublic", type: "bool", internalType: "bool" }
+      { name: "isPublic", type: "bool", internalType: "bool" },
+      { name: "incentiveType", type: "uint8", internalType: "uint8" }
     ],
     stateMutability: "view"
   },
@@ -116,7 +109,8 @@ export const ACTIVITY_FACTORY_ABI = [
       { name: "_depositAmount", type: "uint256", internalType: "uint256" },
       { name: "_totalRounds", type: "uint256", internalType: "uint256" },
       { name: "_maxParticipants", type: "uint256", internalType: "uint256" },
-      { name: "_isPublic", type: "bool", internalType: "bool" }
+      { name: "_isPublic", type: "bool", internalType: "bool" },
+      { name: "_creatorName", type: "string", internalType: "string" }
     ],
     outputs: [
       { name: "challengeAddress", type: "address", internalType: "address" },
@@ -126,21 +120,21 @@ export const ACTIVITY_FACTORY_ABI = [
   },
   {
     type: "function",
-    name: "getAllChallenges",
+    name: "getAllActivities",
     inputs: [],
     outputs: [{ name: "", type: "address[]", internalType: "address[]" }],
     stateMutability: "view"
   },
   {
     type: "function",
-    name: "challengeCount",
+    name: "activityCount",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view"
   },
   {
     type: "function",
-    name: "challenges",
+    name: "activities",
     inputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "address", internalType: "address" }],
     stateMutability: "view"
@@ -281,13 +275,6 @@ export const CHALLENGE_ABI = [
   },
   {
     type: "function",
-    name: "totalRounds",
-    inputs: [],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
-    stateMutability: "view"
-  },
-  {
-    type: "function",
     name: "rewardPerWinner",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
@@ -296,6 +283,62 @@ export const CHALLENGE_ABI = [
   {
     type: "function",
     name: "winnersCount",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view"
+  },
+  {
+    type: "function",
+    name: "getSummary",
+    inputs: [],
+    outputs: [
+      { name: "", type: "string", internalType: "string" },
+      { name: "", type: "string", internalType: "string" },
+      { name: "", type: "address", internalType: "address" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint8", internalType: "uint8" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "", type: "uint256", internalType: "uint256" }
+    ],
+    stateMutability: "view"
+  },
+  {
+    type: "function",
+    name: "getTimeInfo",
+    inputs: [],
+    outputs: [
+      { name: "currentRoundNumber", type: "uint256", internalType: "uint256" },
+      { name: "endTimestamp", type: "uint256", internalType: "uint256" },
+      { name: "started", type: "bool", internalType: "bool" },
+      { name: "finished", type: "bool", internalType: "bool" }
+    ],
+    stateMutability: "view"
+  },
+  {
+    type: "function",
+    name: "getParticipants",
+    inputs: [],
+    outputs: [{ name: "", type: "address[]", internalType: "address[]" }],
+    stateMutability: "view"
+  },
+  {
+    type: "function",
+    name: "poolBalance",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view"
+  },
+  {
+    type: "function",
+    name: "endTime",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view"
@@ -327,19 +370,21 @@ export const CHALLENGE_ABI = [
   }
 ] as const;
 
-// 辅助函数：获取活动元数据
-export async function getActivityMetadata(
-  registry: ActivityRegistry,
-  activityId: bigint
-): Promise<ActivityMetadata> {
-  const metadata = await registry.getActivityMetadata(activityId);
-  return {
-    activityContract: metadata.activityContract,
-    creator: metadata.creator,
-    title: metadata.title,
-    description: metadata.description,
-    createdAt: metadata.createdAt,
-    isPublic: metadata.isPublic
-  };
-}
+
+// 辅助函数：获取活动元数据（已废弃，使用合约直接调用）
+// export async function getActivityMetadata(
+//   registry: ActivityRegistry,
+//   activityId: bigint
+// ): Promise<ActivityMetadata> {
+//   const metadata = await registry.getActivityMetadataTuple(activityId);
+//   return {
+//     activityContract: metadata[0],
+//     creator: metadata[1],
+//     title: metadata[2],
+//     description: metadata[3],
+//     createdAt: metadata[4],
+//     isPublic: metadata[5],
+//     incentiveType: Number(metadata[6] || 0) as IncentiveType
+//   };
+// }
 

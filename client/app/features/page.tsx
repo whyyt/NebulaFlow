@@ -1,9 +1,33 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { injected } from "wagmi/connectors";
 import { FadeIn } from "../../components/animations/FadeIn";
+import { ParticleField } from "../../components/animations/ParticleField";
 import Link from "next/link";
 
 export default function FeaturesPage() {
+  const { address, isConnected } = useAccount();
+  const { connect } = useConnect();
+  const { disconnect } = useDisconnect();
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 设置 mounted 状态，避免 hydration 错误
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 清理 timeout
+  useEffect(() => {
+    return () => {
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+      }
+    };
+  }, []);
   return (
     <div
       style={{
@@ -22,10 +46,12 @@ export default function FeaturesPage() {
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent), radial-gradient(ellipse 60% 40% at 50% 100%, rgba(236, 72, 153, 0.2), transparent)",
+            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent)",
           zIndex: 0,
         }}
       />
+
+      <ParticleField count={20} />
 
       {/* 顶部导航栏 */}
       <nav
@@ -74,16 +100,20 @@ export default function FeaturesPage() {
               textDecoration: "none",
               fontSize: 15,
               fontWeight: 500,
-              opacity: 0.9,
+              opacity: 1,
               transition: "opacity 0.2s",
+              borderBottom: "2px solid rgba(255, 255, 255, 0.5)",
             }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
           >
-            功能特性
+            Core Features
           </Link>
           <Link
-            href="/activities"
+            href="/activities?animate=true"
+            onClick={() => {
+              sessionStorage.setItem('activities_animate', 'true');
+            }}
             style={{
               color: "#ffffff",
               textDecoration: "none",
@@ -95,7 +125,7 @@ export default function FeaturesPage() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
-            活动库
+            Activity Hub
           </Link>
           <Link
             href="/profile"
@@ -110,11 +140,99 @@ export default function FeaturesPage() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
-            我的档案
+            My Journey
           </Link>
         </div>
         
         <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+          {/* 连接钱包按钮 */}
+          {mounted && (
+            !isConnected ? (
+              <button
+                onClick={() => connect({ connector: injected() })}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 20,
+                  borderTop: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  background: "transparent",
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "opacity 0.3s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "120px",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
+              >
+                连接钱包
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (showDisconnect) {
+                    // 第二次点击，断开连接
+                    disconnect();
+                    setShowDisconnect(false);
+                    if (disconnectTimeoutRef.current) {
+                      clearTimeout(disconnectTimeoutRef.current);
+                      disconnectTimeoutRef.current = null;
+                    }
+                  } else {
+                    // 第一次点击，显示"断开连接"
+                    setShowDisconnect(true);
+                    // 清除之前的 timeout
+                    if (disconnectTimeoutRef.current) {
+                      clearTimeout(disconnectTimeoutRef.current);
+                    }
+                    // 1.5秒后自动恢复
+                    disconnectTimeoutRef.current = setTimeout(() => {
+                      setShowDisconnect(false);
+                      disconnectTimeoutRef.current = null;
+                    }, 1500);
+                  }
+                }}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 20,
+                  borderTop: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  background: "transparent",
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "opacity 0.3s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "120px",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
+              >
+                {showDisconnect ? "断开连接" : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "")}
+              </button>
+            )
+          )}
         </div>
       </nav>
 
@@ -180,7 +298,7 @@ export default function FeaturesPage() {
               color: "transparent",
             }}
           >
-            功能特性
+            Core Features
           </h1>
           <p
             style={{

@@ -51,11 +51,6 @@ const ACTIVITY_FACTORY_ADDRESS = "0x..."; // 从部署输出复制
 const ACTIVITY_FACTORY_ADDRESS = "0x..."; // 从部署输出复制
 ```
 
-**`client/app/all-activities/page.tsx`**:
-```typescript
-const ACTIVITY_FACTORY_ADDRESS = "0x..."; // 从部署输出复制
-```
-
 **`client/app/dashboard/page.tsx`**:
 ```typescript
 const ACTIVITY_FACTORY_ADDRESS = "0x..."; // 从部署输出复制
@@ -91,8 +86,7 @@ npm run dev
 ### 查看活动
 
 1. 访问 `/activities` 页面查看活动库
-2. 访问 `/all-activities` 页面查看所有已发布的活动
-3. 访问 `/profile` 页面查看个人参与的活动
+2. 访问 `/profile` 页面查看个人参与的活动
 
 ### 参与押金挑战
 

@@ -58,7 +58,6 @@ client/
 ├── app/
 │   ├── create/              # 创建活动页面
 │   ├── activities/           # 活动库页面
-│   ├── all-activities/      # 所有活动页面
 │   ├── dashboard/           # 个人仪表板
 │   ├── profile/             # 个人档案
 │   └── page.tsx             # 主页

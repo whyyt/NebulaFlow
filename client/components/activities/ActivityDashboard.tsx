@@ -112,7 +112,7 @@ function ActivityCard({ activity }: { activity: ActivityMetadata }) {
       </p>
 
       <div style={{ display: "flex", gap: 16, fontSize: 12, opacity: 0.6, color: "#ffffff", flexWrap: "wrap" }}>
-        <span>创建者: {activity.creator.slice(0, 6)}...{activity.creator.slice(-4)}</span>
+        <span>创建者: {activity.creatorName || activity.creator.slice(0, 6) + "..." + activity.creator.slice(-4)}</span>
         <span>合约: {activity.activityContract.slice(0, 6)}...{activity.activityContract.slice(-4)}</span>
       </div>
     </div>

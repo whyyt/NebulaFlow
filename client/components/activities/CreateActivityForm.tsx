@@ -1,24 +1,32 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DepositChallengeFormData, validateDepositChallengeForm } from "../../lib/types";
+import { ActivityFormData, IncentiveType, validateActivityForm } from "../../lib/types";
 
 interface CreateActivityFormProps {
-  onSubmit: (data: DepositChallengeFormData) => Promise<void>;
+  onSubmit: (data: ActivityFormData) => Promise<void>;
   isSubmitting: boolean;
+  address?: string; // 钱包地址
 }
 
-export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFormProps) {
+export function CreateActivityForm({ onSubmit, isSubmitting, address }: CreateActivityFormProps) {
   const [mounted, setMounted] = useState(false);
   
-  const [formData, setFormData] = useState<DepositChallengeFormData>({
+  const [formData, setFormData] = useState<ActivityFormData>({
+    incentiveType: IncentiveType.DepositPool,
+    creatorName: "",
     title: "",
     description: "",
     depositAmount: "0.01",
-    totalRounds: 7,
+    totalRounds: 7, // 默认值，但输入框允许为空
     maxParticipants: 10,
     isPublic: true
   });
+  
+  // 用于控制输入框显示的值（允许为空字符串）
+  const [totalRoundsInput, setTotalRoundsInput] = useState<string>("");
+  const [maxParticipantsInput, setMaxParticipantsInput] = useState<string>("");
+  const [depositAmountInput, setDepositAmountInput] = useState<string>("");
 
   const [error, setError] = useState<string | null>(null);
 
@@ -46,26 +54,24 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
     };
 
     // 确保所有字段都是字符串类型
-    const submitData: DepositChallengeFormData = {
+    // 使用钱包地址作为 creatorName（如果地址存在）
+    const creatorName = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+    
+    const submitData: ActivityFormData = {
       ...formData,
+      incentiveType: IncentiveType.DepositPool,
+      creatorName: creatorName, // 使用钱包地址
       title: normalizeToString(formData.title),
       description: normalizeToString(formData.description),
-      depositAmount: String(formData.depositAmount || "0.01"),
-      totalRounds: Number(formData.totalRounds) || 7,
-      maxParticipants: Number(formData.maxParticipants) || 10,
+      depositAmount: depositAmountInput === "" ? "" : String(depositAmountInput),
+      totalRounds: totalRoundsInput === "" ? 7 : (Number(totalRoundsInput) || 7),
+      maxParticipants: maxParticipantsInput === "" ? 10 : (Number(maxParticipantsInput) || 10),
       isPublic: Boolean(formData.isPublic)
     };
 
-    // 调试：验证提交数据
-    console.log("=== 表单提交数据验证 ===");
-    console.log("原始 formData:", formData);
-    console.log("提交 submitData:", submitData);
-    console.log("数据类型:", {
-      title: { value: submitData.title, type: typeof submitData.title },
-      description: { value: submitData.description, type: typeof submitData.description }
-    });
+    
 
-    const validationError = validateDepositChallengeForm(submitData);
+    const validationError = validateActivityForm(submitData);
     if (validationError) {
       setError(validationError);
       return;
@@ -78,8 +84,53 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
     }
   };
 
+  // 生成钱包头像（基于地址的简单哈希）
+  const getWalletAvatar = (addr: string) => {
+    if (!addr) return "";
+    // 使用地址生成一个简单的头像URL（可以使用 ENS 头像服务或生成基于地址的图片）
+    // 这里使用一个简单的占位符，实际可以使用 https://effigy.im/a/ 或其他服务
+    return `https://effigy.im/a/${addr}.svg`;
+  };
+
   return (
     <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* 钱包地址显示 */}
+      {address && (
+        <div>
+          <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
+            活动创建者
+          </label>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(148,163,184,0.28)",
+            background: "rgba(2,6,23,0.65)",
+          }}>
+            <img
+              src={getWalletAvatar(address)}
+              alt="wallet avatar"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                border: "1px solid rgba(255, 255, 255, 0.2)",
+              }}
+              onError={(e) => {
+                // 如果头像加载失败，使用默认头像
+                (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="16" fill="%23${address.slice(2, 8)}"/></svg>`;
+              }}
+            />
+            <span style={{ color: "#f8fafc", fontSize: 14 }}>
+              {address.slice(0, 6)}...{address.slice(-4)}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 活动标题 */}
       <div>
         <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
@@ -140,8 +191,14 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
           type="number"
           step="0.001"
           min="0"
-          value={formData.depositAmount}
-          onChange={(e) => setFormData(prev => ({ ...prev, depositAmount: e.target.value }))}
+          value={depositAmountInput}
+          onChange={(e) => {
+            const value = e.target.value;
+            setDepositAmountInput(value);
+            setFormData(prev => ({ ...prev, depositAmount: value }));
+          }}
+          placeholder="请输入金额"
+          className="no-spinner"
           style={{
             width: "100%",
             padding: "12px 14px",
@@ -151,21 +208,37 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
             color: "#f8fafc",
             fontSize: 14
           }}
+          onWheel={(e) => {
+            // 防止鼠标滚轮改变数字
+            (e.target as HTMLInputElement).blur();
+          }}
         />
       </div>
 
-      {/* 挑战天数和最大参与人数 */}
+      {/* 活动天数和最大参与人数 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
         <div>
           <label style={{ display: "block", marginBottom: 8, fontSize: 14, fontWeight: 600 }}>
-            挑战天数 *
+            活动天数 *
           </label>
           <input
             type="number"
             min="1"
             max="365"
-            value={formData.totalRounds}
-            onChange={(e) => setFormData(prev => ({ ...prev, totalRounds: parseInt(e.target.value) || 0 }))}
+            value={totalRoundsInput}
+            onChange={(e) => {
+              const value = e.target.value;
+              setTotalRoundsInput(value);
+              // 如果输入为空，保持 formData.totalRounds 为默认值 7（提交时会使用）
+              if (value !== "") {
+                const numValue = parseInt(value);
+                if (!isNaN(numValue) && numValue > 0) {
+                  setFormData(prev => ({ ...prev, totalRounds: numValue }));
+                }
+              }
+            }}
+            placeholder="请输入活动天数"
+            className="no-spinner"
             style={{
               width: "100%",
               padding: "12px 14px",
@@ -174,6 +247,10 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
               background: "rgba(2,6,23,0.65)",
               color: "#f8fafc",
               fontSize: 14
+            }}
+            onWheel={(e) => {
+              // 防止鼠标滚轮改变数字
+              (e.target as HTMLInputElement).blur();
             }}
           />
         </div>
@@ -186,8 +263,20 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
             type="number"
             min="1"
             max="10000"
-            value={formData.maxParticipants}
-            onChange={(e) => setFormData(prev => ({ ...prev, maxParticipants: parseInt(e.target.value) || 0 }))}
+            value={maxParticipantsInput}
+            onChange={(e) => {
+              const value = e.target.value;
+              setMaxParticipantsInput(value);
+              // 如果输入为空，保持 formData.maxParticipants 为默认值 10（提交时会使用）
+              if (value !== "") {
+                const numValue = parseInt(value);
+                if (!isNaN(numValue) && numValue > 0) {
+                  setFormData(prev => ({ ...prev, maxParticipants: numValue }));
+                }
+              }
+            }}
+            placeholder="请输入最大参与人数"
+            className="no-spinner"
             style={{
               width: "100%",
               padding: "12px 14px",
@@ -196,6 +285,10 @@ export function CreateActivityForm({ onSubmit, isSubmitting }: CreateActivityFor
               background: "rgba(2,6,23,0.65)",
               color: "#f8fafc",
               fontSize: 14
+            }}
+            onWheel={(e) => {
+              // 防止鼠标滚轮改变数字
+              (e.target as HTMLInputElement).blur();
             }}
           />
         </div>

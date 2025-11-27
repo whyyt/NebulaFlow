@@ -1,24 +1,26 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAccount, useReadContract, useWriteContract, usePublicClient, useConnect } from "wagmi";
+import { useAccount, useReadContract, useWriteContract, usePublicClient, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { usePathname, useSearchParams } from "next/navigation";
 import { FadeIn } from "../../components/animations/FadeIn";
+import { ParticleField } from "../../components/animations/ParticleField";
 import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
 import { CreateActivityForm } from "../../components/activities/CreateActivityForm";
 import { ActivityCard } from "../../components/activities/ActivityCard";
-import { DepositChallengeFormData, ActivityMetadata } from "../../lib/types";
+import { ActivityFormData, ActivityMetadata, IncentiveType, DepositChallengeFormData } from "../../lib/types";
 import { getStoredActivities } from "../../lib/activityStorage";
 import { parseEther } from "viem";
 import Link from "next/link";
 
-const ACTIVITY_FACTORY_ADDRESS = "0x4ed7c70F96B99c776995fB64377f0d4aB3B0e1C1";
-const ACTIVITY_REGISTRY_ADDRESS = "0x59b670e9fA9D0A427751Af201D676719a970857b"; // 直接使用硬编码地址，避免异步加载延迟
+const ACTIVITY_FACTORY_ADDRESS = "0x4A679253410272dd5232B3Ff7cF5dbB88f295319";
+const ACTIVITY_REGISTRY_ADDRESS = "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f"; // 直接使用硬编码地址，避免异步加载延迟
 
 export default function ActivitiesPage() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
+  const { disconnect } = useDisconnect();
   const { writeContractAsync, isPending } = useWriteContract();
   const publicClient = usePublicClient();
   const pathname = usePathname();
@@ -28,14 +30,26 @@ export default function ActivitiesPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const lastPathnameRef = useRef<string | null>(null);
+  const [shouldAnimateActivities, setShouldAnimateActivities] = useState(false);
 
   // 直接使用硬编码的 ActivityRegistry 地址，避免异步加载延迟
   const registryAddress = ACTIVITY_REGISTRY_ADDRESS;
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // 清理 timeout
+  useEffect(() => {
+    return () => {
+      if (disconnectTimeoutRef.current) {
+        clearTimeout(disconnectTimeoutRef.current);
+      }
+    };
   }, []);
 
   // 获取所有活动（优先从本地存储读取，然后从合约获取）
@@ -105,7 +119,7 @@ export default function ActivitiesPage() {
         throw err; // 重新抛出错误，让外层 catch 处理
       }
 
-      if (count === 0n) {
+      if (count === BigInt(0)) {
         console.log(`   ⚠️  合约中活动总数为 0`);
         // 如果合约中没有活动，使用本地数据
         if (storedActivities.length === 0) {
@@ -117,12 +131,14 @@ export default function ActivitiesPage() {
       }
 
       console.log(`\n4️⃣ 开始从合约获取 ${Number(count)} 个活动的元数据...`);
+      console.log(`   ⚠️  注意：activityId 从 1 开始，不是从 0 开始！`);
 
       // 批量获取所有活动的元数据，添加错误处理
       // 使用串行方式逐个获取，避免并发导致的错误
+      // 【关键修复】activityId 从 1 开始（合约中使用 ++activityCount），所以循环从 1 开始
       const contractActivities: ActivityMetadata[] = [];
       
-      for (let i = 0; i < Number(count); i++) {
+      for (let i = 1; i <= Number(count); i++) {
         try {
           console.log(`   📋 读取活动 ID ${i}...`);
           console.log(`      - i 值:`, i, `(类型: ${typeof i})`);
@@ -147,16 +163,18 @@ export default function ActivitiesPage() {
           , 2));
           
           // getActivityMetadataTuple 返回多个值，viem 会将其解析为数组
-          // 按照返回顺序：activityContract, creator, title, description, createdAt, isPublic
+          // 按照返回顺序：activityContract, creator, creatorName, title, description, createdAt, isPublic, incentiveType
           let metadata: any;
           if (Array.isArray(result)) {
             metadata = {
               activityContract: result[0],
               creator: result[1],
-              title: result[2],
-              description: result[3],
-              createdAt: result[4],
-              isPublic: result[5]
+              creatorName: result[2],
+              title: result[3],
+              description: result[4],
+              createdAt: result[5],
+              isPublic: result[6],
+              incentiveType: result[7] !== undefined ? Number(result[7]) : 0
             };
             console.log(`      - 检测到数组格式，已转换为对象格式`);
           } else {
@@ -171,31 +189,37 @@ export default function ActivitiesPage() {
           
           // 提取字段值
           const activityContract = metadata?.activityContract || metadata?.[0];
-          const title = metadata?.title || metadata?.[2];
-          const description = metadata?.description || metadata?.[3] || "";
           const creator = metadata?.creator || metadata?.[1];
-          const createdAt = metadata?.createdAt || metadata?.[4];
-          const isPublic = metadata?.isPublic !== undefined ? metadata.isPublic : (metadata?.[5] !== undefined ? metadata[5] : true);
+          const creatorName = metadata?.creatorName || metadata?.[2] || "";
+          const title = metadata?.title || metadata?.[3];
+          const description = metadata?.description || metadata?.[4] || "";
+          const createdAt = metadata?.createdAt || metadata?.[5];
+          const isPublic = metadata?.isPublic !== undefined ? metadata.isPublic : (metadata?.[6] !== undefined ? metadata[6] : true);
+          const incentiveType = metadata?.incentiveType !== undefined ? Number(metadata.incentiveType) : (metadata?.[7] !== undefined ? Number(metadata[7]) : 0);
           
           console.log(`      - 提取的字段值:`);
           console.log(`         - activityContract:`, activityContract);
+          console.log(`         - creator:`, creator);
+          console.log(`         - creatorName:`, creatorName);
           console.log(`         - title:`, title);
           console.log(`         - description:`, description);
-          console.log(`         - creator:`, creator);
           console.log(`         - createdAt:`, createdAt);
           console.log(`         - isPublic:`, isPublic);
+          console.log(`         - incentiveType:`, incentiveType);
           
           if (activityContract && 
               activityContract !== "0x0000000000000000000000000000000000000000" &&
               title &&
               title !== "") {
-            const processedActivity = {
+            const processedActivity: ActivityMetadata = {
               activityContract: activityContract as string,
               creator: creator as string,
+              creatorName: creatorName as string,
               title: title as string,
               description: description as string,
               createdAt: BigInt(createdAt?.toString() || "0"),
               isPublic: Boolean(isPublic),
+              incentiveType: incentiveType as IncentiveType,
               activityId: i // 保存真实的链上 activityId
             };
             console.log(`      - 处理后的活动数据:`, JSON.stringify(processedActivity, (key, value) => 
@@ -298,6 +322,27 @@ export default function ActivitiesPage() {
     }
   }, [publicClient]);
 
+  // 检查是否应该执行淡入动画（从导航栏点击进入时）
+  useEffect(() => {
+    if (!mounted) return;
+    
+    // 检查 URL 参数或 sessionStorage 中是否有动画标记
+    const animateParam = searchParams.get('animate');
+    const fromNav = sessionStorage.getItem('activities_animate');
+    
+    if (animateParam === 'true' || fromNav === 'true') {
+      setShouldAnimateActivities(true);
+      // 清除标记，确保只执行一次
+      sessionStorage.removeItem('activities_animate');
+      if (animateParam === 'true') {
+        // 移除 URL 参数
+        window.history.replaceState({}, '', '/activities');
+      }
+    } else {
+      setShouldAnimateActivities(false);
+    }
+  }, [mounted, searchParams]);
+
   // 监听路由变化和 refresh 参数，当从 /create 跳转过来时刷新数据
   useEffect(() => {
     if (!mounted) return;
@@ -393,16 +438,13 @@ export default function ActivitiesPage() {
   }, [mounted, publicClient, fetchAllActivities]);
   
 
-  const handleSubmit = async (data: DepositChallengeFormData) => {
+  const handleSubmit = async (data: ActivityFormData) => {
     if (!isConnected || !address) {
       setError("请先连接钱包");
       return;
     }
 
-    if (ACTIVITY_FACTORY_ADDRESS === "0x0000000000000000000000000000000000000000") {
-      setError("ActivityFactory 合约尚未部署，请先部署合约");
-      return;
-    }
+    // ActivityFactory 地址验证已在部署时完成，这里不再需要检查
 
     setError(null);
     setSuccess(null);
@@ -413,8 +455,20 @@ export default function ActivitiesPage() {
     }
 
     try {
+      // 押金金额验证
+      if (!data.depositAmount || String(data.depositAmount).trim() === "") {
+        setError("请输入金额");
+        return;
+      }
+      
       // 创建押金挑战
-      const depositWei = parseEther(data.depositAmount || "0");
+      const depositAmountStr = String(data.depositAmount).trim();
+      const depositAmountNum = parseFloat(depositAmountStr);
+      if (isNaN(depositAmountNum) || depositAmountNum <= 0) {
+        setError("押金金额必须大于 0");
+        return;
+      }
+      const depositWei = parseEther(depositAmountStr);
       
       const normalizeToString = (value: any): string => {
         if (value === null || value === undefined) return "";
@@ -422,6 +476,15 @@ export default function ActivitiesPage() {
         if (typeof value === "string") return value.trim();
         return String(value).trim();
       };
+      
+      // 处理 creatorName - 使用钱包地址
+      let creatorName: string = "";
+      if (address) {
+        creatorName = `${address.slice(0, 6)}...${address.slice(-4)}`;
+      } else {
+        setError("请先连接钱包");
+        return;
+      }
       
       // 处理 title - 强制转换为字符串，无论输入是什么类型
       let title: string = "";
@@ -438,7 +501,6 @@ export default function ActivitiesPage() {
         const tempDescription = String(data.description);
         description = tempDescription.trim();
       }
-      
       if (!title || title.length === 0) {
         setError("活动标题不能为空");
         return;
@@ -449,28 +511,35 @@ export default function ActivitiesPage() {
       }
       
       // 所有活动都设置为公开
-      // 再次强制确保 title 和 description 是字符串类型
+      // 再次强制确保所有字符串字段都是字符串类型
+      const finalCreatorName: string = String(creatorName || "");
       const finalTitle: string = String(title || "");
       const finalDescription: string = String(description || "");
       
-      const finalArgs: [string, string, bigint, bigint, bigint, boolean] = [
+      const finalArgs: [string, string, bigint, bigint, bigint, boolean, string] = [
         finalTitle,  // 强制转换为字符串
         finalDescription,  // 强制转换为字符串
         depositWei,
         BigInt(data.totalRounds || 0),
         BigInt(data.maxParticipants || 0),
-        true  // 所有活动都设置为公开
+        true,  // 所有活动都设置为公开
+        finalCreatorName  // 创建者名称
       ];
       
       // 调试：验证参数类型和值
       console.log("=== 合约调用参数验证 (activities页面) ===");
       console.log("原始数据:", {
+        creatorName: data.creatorName,
+        creatorNameType: typeof data.creatorName,
         title: data.title,
         titleType: typeof data.title,
         description: data.description,
         descriptionType: typeof data.description
       });
       console.log("转换后:", {
+        creatorName: creatorName,
+        creatorNameType: typeof creatorName,
+        creatorNameLength: creatorName.length,
         title: title,
         titleType: typeof title,
         titleLength: title.length,
@@ -527,10 +596,12 @@ export default function ActivitiesPage() {
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent), radial-gradient(ellipse 60% 40% at 50% 100%, rgba(236, 72, 153, 0.2), transparent)",
+            "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.3), transparent)",
           zIndex: 0,
         }}
       />
+
+      <ParticleField count={20} />
 
       {/* 顶部导航栏 */}
       <nav
@@ -585,10 +656,14 @@ export default function ActivitiesPage() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
-            功能特性
+            Core Features
           </Link>
           <Link
-            href="/activities"
+            href="/activities?animate=true"
+            onClick={() => {
+              // 设置 sessionStorage 标记，确保淡入动画执行
+              sessionStorage.setItem('activities_animate', 'true');
+            }}
             style={{
               color: "#ffffff",
               textDecoration: "none",
@@ -601,7 +676,7 @@ export default function ActivitiesPage() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
           >
-            活动库
+            Activity Hub
           </Link>
           <Link
             href="/profile"
@@ -616,53 +691,101 @@ export default function ActivitiesPage() {
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
           >
-            我的档案
+            My Journey
           </Link>
         </div>
         
         <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
+          {/* 连接钱包按钮 */}
+          {mounted && (
+            !isConnected ? (
+              <button
+                onClick={() => connect({ connector: injected() })}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 20,
+                  borderTop: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  background: "transparent",
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "opacity 0.3s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "120px",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
+              >
+                连接钱包
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (showDisconnect) {
+                    // 第二次点击，断开连接
+                    disconnect();
+                    setShowDisconnect(false);
+                    if (disconnectTimeoutRef.current) {
+                      clearTimeout(disconnectTimeoutRef.current);
+                      disconnectTimeoutRef.current = null;
+                    }
+                  } else {
+                    // 第一次点击，显示"断开连接"
+                    setShowDisconnect(true);
+                    // 清除之前的 timeout
+                    if (disconnectTimeoutRef.current) {
+                      clearTimeout(disconnectTimeoutRef.current);
+                    }
+                    // 1.5秒后自动恢复
+                    disconnectTimeoutRef.current = setTimeout(() => {
+                      setShowDisconnect(false);
+                      disconnectTimeoutRef.current = null;
+                    }, 1500);
+                  }
+                }}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 20,
+                  borderTop: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderLeft: "none",
+                  borderRight: "none",
+                  background: "transparent",
+                  color: "#ffffff",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: "pointer",
+                  transition: "opacity 0.3s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "120px",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
+              >
+                {showDisconnect ? "断开连接" : (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "")}
+              </button>
+            )
+          )}
         </div>
       </nav>
-
-      {/* 返回主界面按钮 */}
-      <div
-        style={{
-          position: "fixed",
-          top: 100,
-          left: 48,
-          zIndex: 999,
-        }}
-      >
-        <Link
-          href="/"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "12px 20px",
-            borderRadius: 12,
-            border: "1px solid rgba(255, 255, 255, 0.2)",
-            background: "rgba(255, 255, 255, 0.1)",
-            color: "#ffffff",
-            textDecoration: "none",
-            fontSize: 14,
-            fontWeight: 500,
-            transition: "all 0.3s",
-            backdropFilter: "blur(10px)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
-            e.currentTarget.style.transform = "translateX(-4px)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-            e.currentTarget.style.transform = "translateX(0)";
-          }}
-        >
-          <span>←</span>
-          <span>返回主界面</span>
-        </Link>
-      </div>
 
       {/* 内容区域 */}
       <div
@@ -679,25 +802,15 @@ export default function ActivitiesPage() {
             style={{
               fontSize: "clamp(48px, 6vw, 64px)",
               fontWeight: 700,
-              marginBottom: 16,
+              marginBottom: 40,
               textAlign: "center",
               background: "linear-gradient(135deg, #ffffff, #a78bfa, #ec4899)",
               WebkitBackgroundClip: "text",
               color: "transparent",
             }}
           >
-            活动库
+            Activity Hub
           </h1>
-          <p
-            style={{
-              fontSize: 18,
-              textAlign: "center",
-              opacity: 0.8,
-              marginBottom: 40,
-            }}
-          >
-            浏览所有可参与的活动
-          </p>
         </FadeIn>
 
         {/* 创建活动按钮 */}
@@ -748,7 +861,7 @@ export default function ActivitiesPage() {
                 }
               }}
             >
-              {showCreateForm ? "收起表单" : "创建活动"}
+              {showCreateForm ? "收起创建栏" : "创建活动"}
             </button>
           </div>
         </FadeIn>
@@ -774,7 +887,7 @@ export default function ActivitiesPage() {
                 }}
               >
 
-                <CreateActivityForm onSubmit={handleSubmit} isSubmitting={isPending} />
+                <CreateActivityForm onSubmit={handleSubmit} isSubmitting={isPending} address={address || undefined} />
 
                 {success && (
                   <div style={{
@@ -874,8 +987,9 @@ export default function ActivitiesPage() {
           </div>
         )}
 
-        {/* 调试信息面板 */}
+        {/* 调试信息面板 - 隐藏但保留代码 */}
         <div style={{
+          display: "none", // fix: 隐藏调试信息面板，保留代码以便后续调试
           marginBottom: 20,
           padding: 16,
           borderRadius: 12,
@@ -989,14 +1103,47 @@ export default function ActivitiesPage() {
             <p style={{ fontSize: 18, opacity: 0.8, margin: 0 }}>
               暂无活动，快去创建第一个活动吧！
             </p>
-            <p style={{ fontSize: 14, opacity: 0.6, marginTop: 12, margin: 0 }}>
-              (调试：activities.length = {activities.length}, loading = {loading ? "true" : "false"})
-            </p>
           </div>
         ) : (
-          <FadeIn delay={0.4} duration={0.8}>
-            {/* 临时取消 isPublic 过滤，显示所有链上活动用于调试 */}
-            {(() => {
+          shouldAnimateActivities ? (
+            <FadeIn delay={0.4} duration={0.8}>
+              {/* 临时取消 isPublic 过滤，显示所有链上活动用于调试 */}
+              {(() => {
+                // 过滤掉已结束的活动（状态为 Settled = 2）
+                // 注意：这里我们无法直接读取状态，所以需要在 ActivityCard 中处理
+                const visibleActivities = activities; // 不再 filter isPublic，显示所有活动
+                console.log("【渲染活动列表】");
+                console.log("   - 总活动数:", activities.length);
+                console.log("   - 可见活动数:", visibleActivities.length);
+                console.log("   - 活动详情:", visibleActivities.map(a => ({
+                  title: a.title,
+                  isPublic: a.isPublic,
+                  activityContract: a.activityContract
+                })));
+                
+                return (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                      gap: 24,
+                    }}
+                  >
+                    {visibleActivities.map((activity, index) => (
+                      <ActivityCard
+                        key={`${activity.activityContract}-${activity.activityId ?? index}`}
+                        activity={activity} // 使用保存的真实 activityId
+                        hideIfSettled={true} // 传递 prop 来隐藏已结束的活动
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
+            </FadeIn>
+          ) : (
+            /* 不执行淡入动画，直接显示 */
+            (() => {
+              // 过滤掉已结束的活动（状态为 Settled = 2）
               const visibleActivities = activities; // 不再 filter isPublic，显示所有活动
               console.log("【渲染活动列表】");
               console.log("   - 总活动数:", activities.length);
@@ -1019,12 +1166,13 @@ export default function ActivitiesPage() {
                     <ActivityCard
                       key={`${activity.activityContract}-${activity.activityId ?? index}`}
                       activity={activity} // 使用保存的真实 activityId
+                      hideIfSettled={true} // 传递 prop 来隐藏已结束的活动
                     />
                   ))}
                 </div>
               );
-            })()}
-          </FadeIn>
+            })()
+          )
         )}
       </div>
     </div>
