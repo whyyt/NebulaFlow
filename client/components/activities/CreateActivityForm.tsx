@@ -253,6 +253,16 @@ export function CreateActivityForm({ onSubmit, isSubmitting, address }: CreateAc
               (e.target as HTMLInputElement).blur();
             }}
           />
+          <div style={{ 
+            marginTop: 4, 
+            fontSize: 12, 
+            color: "rgba(148, 163, 184, 0.7)",
+            fontStyle: "italic"
+          }}>
+            {totalRoundsInput && Number(totalRoundsInput) > 0 
+              ? `输入${totalRoundsInput}表示第${totalRoundsInput}天24:00结束`
+              : "输入1表示当日24:00结束，输入2表示第二天24:00结束，以此类推"}
+          </div>
         </div>
 
         <div>

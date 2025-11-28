@@ -218,32 +218,59 @@ export function NFTActivityCard({ activity, hideIfSettled = false }: NFTActivity
         </p>
       )}
 
-      {/* 创建者信息 */}
-      {creatorAddress && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-          <img
-            src={getWalletAvatar(creatorAddress)}
-            alt="creator avatar"
-            style={{
-              width: 20,
-              height: 20,
-              borderRadius: "50%",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="10" fill="%23${creatorAddress.slice(2, 8)}"/></svg>`;
-            }}
-          />
-          <span style={{ fontSize: 12, opacity: 0.7, color: "#ffffff" }}>
-            {creatorAddress.slice(0, 6)}...{creatorAddress.slice(-4)}
-          </span>
+      {/* 创建者信息和日期 - Activity Hub 页面：日期在创建者右侧；My Journey 页面：分开显示 */}
+      {!isProfilePage ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, opacity: 0.6, color: "#ffffff" }}>
+          {creatorAddress && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <img
+                src={getWalletAvatar(creatorAddress)}
+                alt="creator avatar"
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="10" fill="%23${creatorAddress.slice(2, 8)}"/></svg>`;
+                }}
+              />
+              <span>
+                {creatorAddress.slice(0, 6)}...{creatorAddress.slice(-4)}
+              </span>
+            </div>
+          )}
+          <span>{formatDate(activity.createdAt)}</span>
         </div>
+      ) : (
+        <>
+          {/* My Journey 页面：创建者和日期分开显示 */}
+          {creatorAddress && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <img
+                src={getWalletAvatar(creatorAddress)}
+                alt="creator avatar"
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="10" fill="%23${creatorAddress.slice(2, 8)}"/></svg>`;
+                }}
+              />
+              <span style={{ fontSize: 12, opacity: 0.7, color: "#ffffff" }}>
+                {creatorAddress.slice(0, 6)}...{creatorAddress.slice(-4)}
+              </span>
+            </div>
+          )}
+          <div style={{ fontSize: 12, opacity: 0.6, color: "#ffffff" }}>
+            {formatDate(activity.createdAt)}
+          </div>
+        </>
       )}
-
-      {/* 日期 */}
-      <div style={{ fontSize: 12, opacity: 0.6, color: "#ffffff" }}>
-        {formatDate(activity.createdAt)}
-      </div>
     </div>
   );
 }

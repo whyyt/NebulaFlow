@@ -272,7 +272,7 @@ export default function FeaturesPage() {
           }}
         >
           <span>←</span>
-          <span>返回主界面</span>
+          <span>back to homepage</span>
         </Link>
       </div>
 
@@ -452,7 +452,7 @@ export default function FeaturesPage() {
                   margin: "0 0 16px 0",
                 }}
               >
-                公开/私密档案
+                你的个人档案
               </h3>
               <p
                 style={{
@@ -462,7 +462,7 @@ export default function FeaturesPage() {
                   margin: 0,
                 }}
               >
-                智能分类管理，保护隐私的同时展示成就
+                智能分类管理，回顾你的整段成长旅程
               </p>
             </div>
           </div>
