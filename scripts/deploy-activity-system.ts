@@ -21,10 +21,19 @@ async function main() {
   const factoryAddress = await activityFactory.getAddress();
   console.log("ActivityFactory 地址:", factoryAddress);
 
+  // 3. 部署 NFTActivityFactory
+  console.log("\n3. 部署 NFTActivityFactory...");
+  const NFTActivityFactory = await ethers.getContractFactory("NFTActivityFactory");
+  const nftActivityFactory = await NFTActivityFactory.deploy(registryAddress);
+  await nftActivityFactory.waitForDeployment();
+  const nftFactoryAddress = await nftActivityFactory.getAddress();
+  console.log("NFTActivityFactory 地址:", nftFactoryAddress);
+
   console.log("\n✅ 部署完成！");
   console.log("\n请更新前端配置中的以下地址：");
   console.log(`ACTIVITY_REGISTRY_ADDRESS = "${registryAddress}"`);
   console.log(`ACTIVITY_FACTORY_ADDRESS = "${factoryAddress}"`);
+  console.log(`NFT_ACTIVITY_FACTORY_ADDRESS = "${nftFactoryAddress}"`);
 }
 
 main()

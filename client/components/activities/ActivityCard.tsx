@@ -107,9 +107,10 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
         backdropFilter: "blur(10px)",
         transition: "all 0.3s",
         cursor: "pointer",
-        // 淘汰状态：灰度化
-        opacity: isEliminated ? 0.5 : 1,
-        filter: isEliminated ? "grayscale(80%)" : "none",
+        // Activity Hub 页面：不显示用户个人状态，只显示活动的全局状态
+        // My Journey 页面：显示用户个人状态（淘汰、完成等）
+        opacity: isProfilePage && isEliminated ? 0.5 : 1,
+        filter: isProfilePage && isEliminated ? "grayscale(80%)" : "none",
         // 完成状态：高亮边框（My Journey 页面成功坚持的活动边框为金黄色）
         borderColor: isProfilePage 
           ? (isCompleted && !isEliminated 
@@ -117,11 +118,7 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
               : isEliminated
               ? "rgba(239, 68, 68, 0.3)" // 被淘汰的活动为红色边框
               : "rgba(255, 255, 255, 0.1)") // 其他活动为默认边框
-          : isCompleted && !isEliminated 
-          ? "rgba(251, 191, 36, 0.5)"
-          : isEliminated 
-          ? "rgba(239, 68, 68, 0.3)" 
-          : "rgba(255, 255, 255, 0.1)",
+          : "rgba(255, 255, 255, 0.1)", // Activity Hub 页面：统一使用默认边框，不随用户操作变化
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-4px)";
@@ -131,8 +128,9 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
           e.currentTarget.style.borderColor = "rgba(251, 191, 36, 0.9)"; // 悬停时稍微加深金黄色
         } else if (isProfilePage && isEliminated) {
           e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.4)"; // 被淘汰的活动悬停时加深红色
-        } else if (!isProfilePage) {
-          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)"; // 其他页面保持原有逻辑
+        } else {
+          // Activity Hub 页面：统一使用默认边框
+          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
         }
       }}
       onMouseLeave={(e) => {
@@ -143,16 +141,15 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
           e.currentTarget.style.borderColor = "rgba(251, 191, 36, 0.8)"; // 恢复金黄色
         } else if (isProfilePage && isEliminated) {
           e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.3)"; // 恢复红色
-        } else if (!isProfilePage) {
-          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)"; // 其他页面保持原有逻辑
         } else {
-          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)"; // 默认边框
+          // Activity Hub 页面：统一使用默认边框
+          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
         }
       }}
     >
-      {/* 状态标识区域 */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        {/* 未开始状态 - 灰色 */}
+      {/* 状态标识区域 - 左侧对齐 */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", justifyContent: "flex-start", alignItems: "center" }}>
+        {/* 未开始状态 - 灰色 - 放在最左侧 */}
         {isScheduled && (
           <div
             style={{
@@ -170,7 +167,7 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
           </div>
         )}
 
-        {/* 进行中状态 - 绿色 */}
+        {/* 进行中状态 - 绿色 - 放在最左侧 */}
         {isActive && (
           <div
             style={{
@@ -224,8 +221,8 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
           </div>
         )}
         
-        {/* 淘汰状态 */}
-        {isEliminated && (
+        {/* 淘汰状态 - 仅在 My Journey 页面显示 */}
+        {isProfilePage && isEliminated && (
           <div
             style={{
               display: "inline-block",
@@ -242,8 +239,8 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
           </div>
         )}
 
-        {/* 已完成待结算 */}
-        {isCompleted && !isEliminated && !isSettled && (
+        {/* 已完成待结算 - 仅在 My Journey 页面显示 */}
+        {isProfilePage && isCompleted && !isEliminated && !isSettled && (
           <div
             style={{
               display: "inline-block",
@@ -325,7 +322,7 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
                 border: "1px solid rgba(34, 197, 94, 0.3)"
               }}
             >
-              💰 {parseFloat(formatEther(rewardPerWinner)).toFixed(4)} ETH
+              💰 获得 {parseFloat(formatEther(rewardPerWinner)).toFixed(4)} ETH
             </div>
           )}
         </div>

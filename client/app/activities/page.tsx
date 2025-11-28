@@ -7,15 +7,20 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { FadeIn } from "../../components/animations/FadeIn";
 import { ParticleField } from "../../components/animations/ParticleField";
 import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
-import { CreateActivityForm } from "../../components/activities/CreateActivityForm";
+import { NFT_ACTIVITY_FACTORY_ABI } from "../../lib/nftActivityRegistry";
+import { CreateUnifiedActivityForm } from "../../components/activities/CreateUnifiedActivityForm";
+import { CreateNFTActivityForm } from "../../components/activities/CreateNFTActivityForm";
 import { ActivityCard } from "../../components/activities/ActivityCard";
+import { NFTActivityCard } from "../../components/activities/NFTActivityCard";
 import { ActivityFormData, ActivityMetadata, IncentiveType, DepositChallengeFormData } from "../../lib/types";
-import { getStoredActivities } from "../../lib/activityStorage";
+import { getStoredActivities, saveActivity } from "../../lib/activityStorage";
 import { parseEther } from "viem";
+import { decodeEventLog } from "viem";
 import Link from "next/link";
 
-const ACTIVITY_FACTORY_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // 直接使用硬编码地址，避免异步加载延迟
+const ACTIVITY_FACTORY_ADDRESS = "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650";
+const NFT_ACTIVITY_FACTORY_ADDRESS = "0xc351628EB244ec633d5f21fBD6621e1a683B1181";
+const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0"; // 直接使用硬编码地址，避免异步加载延迟
 
 export default function ActivitiesPage() {
   const { address, isConnected } = useAccount();
@@ -28,7 +33,8 @@ export default function ActivitiesPage() {
   const [mounted, setMounted] = useState(false);
   const [activities, setActivities] = useState<ActivityMetadata[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCreateNFTForm, setShowCreateNFTForm] = useState(false);
+  const [showCreateUnifiedForm, setShowCreateUnifiedForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDisconnect, setShowDisconnect] = useState(false);
   const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -121,11 +127,12 @@ export default function ActivitiesPage() {
 
       if (count === BigInt(0)) {
         console.log(`   ⚠️  合约中活动总数为 0`);
-        // 如果合约中没有活动，使用本地数据
-        if (storedActivities.length === 0) {
-          console.log(`   - 本地也无数据，设置空数组`);
-          setActivities([]);
+        // 如果合约中没有活动，清除本地数据（可能是合约重新部署）
+        console.log(`   - 清除本地存储的旧活动数据`);
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("nebulaflow_activities");
         }
+        setActivities([]);
         setLoading(false);
         return;
       }
@@ -248,13 +255,14 @@ export default function ActivitiesPage() {
         typeof value === 'bigint' ? value.toString() : value
       , 2));
       
-      // 4. 合并本地和合约数据，优先使用链上数据
-      // 策略：以链上数据为准，如果链上活动已存在于本地，用链上数据覆盖本地数据
-      // 如果本地有活动但链上不存在，也保留（可能是刚创建还未同步到链上）
+      // 4. 合并本地和合约数据，只保留链上存在的活动
+      // 策略：严格以链上数据为准，只显示链上存在的活动
+      // 如果本地有活动但链上不存在，不保留（可能是旧合约的数据）
       const mergedActivities: ActivityMetadata[] = [];
       const processedContracts = new Set<string>();
+      const chainActivityIds = new Set<number>();
       
-      console.log(`\n6️⃣ 合并数据（优先使用链上数据，保留本地新活动）:`);
+      console.log(`\n6️⃣ 合并数据（只保留链上存在的活动）:`);
       console.log(`   - 本地活动数量:`, storedActivities.length);
       console.log(`   - 合约活动数量:`, contractActivities.length);
       
@@ -263,18 +271,68 @@ export default function ActivitiesPage() {
         const contractAddr = contractActivity.activityContract.toLowerCase();
         mergedActivities.push(contractActivity);
         processedContracts.add(contractAddr);
-        console.log(`   ✅ 添加链上活动:`, contractActivity.activityContract, `(title: ${contractActivity.title})`);
+        if (contractActivity.activityId !== undefined) {
+          chainActivityIds.add(contractActivity.activityId);
+        }
+        console.log(`   ✅ 添加链上活动:`, contractActivity.activityContract, `(ID: ${contractActivity.activityId}, title: ${contractActivity.title})`);
       }
       
-      // 然后添加本地存储中但链上不存在的活动
-      // 这包括：1. 刚创建还未同步到链上的活动 2. 旧数据或未同步的数据
+      // 验证本地活动是否在链上存在
+      // 只保留那些 activityId 在当前链上范围内的活动（可能是刚创建还未完全同步的）
       for (const storedActivity of storedActivities) {
         const storedAddr = storedActivity.activityContract.toLowerCase();
-        if (!processedContracts.has(storedAddr)) {
-          mergedActivities.push(storedActivity);
-          console.log(`   ✅ 添加本地活动（链上不存在，可能是新创建的活动）:`, storedActivity.activityContract, `(title: ${storedActivity.title})`);
-        } else {
+        const storedId = storedActivity.activityId;
+        
+        // 如果本地活动已存在于链上，跳过（已使用链上数据）
+        if (processedContracts.has(storedAddr)) {
           console.log(`   ⏭️  跳过本地活动（链上已存在，已使用链上数据）:`, storedActivity.activityContract);
+          continue;
+        }
+        
+        // 如果本地活动有 activityId，检查是否在当前链上范围内
+        if (storedId !== undefined) {
+          if (storedId > 0 && storedId <= Number(count)) {
+            // activityId 在范围内，可能是刚创建还未完全同步，保留
+            mergedActivities.push(storedActivity);
+            console.log(`   ✅ 添加本地活动（activityId ${storedId} 在链上范围内，可能是新创建的活动）:`, storedActivity.activityContract, `(title: ${storedActivity.title})`);
+          } else {
+            // activityId 超出范围，是旧合约的数据，不保留
+            console.log(`   ❌ 跳过本地活动（activityId ${storedId} 超出链上范围 1-${Number(count)}，是旧合约数据）:`, storedActivity.activityContract, `(title: ${storedActivity.title})`);
+          }
+        } else {
+          // 没有 activityId，可能是旧数据，不保留
+          console.log(`   ❌ 跳过本地活动（没有 activityId，可能是旧数据）:`, storedActivity.activityContract, `(title: ${storedActivity.title})`);
+        }
+      }
+      
+      // 清除 localStorage 中不在链上的旧活动
+      if (typeof window !== "undefined") {
+        const validStoredActivities = storedActivities.filter((storedActivity) => {
+          const storedAddr = storedActivity.activityContract.toLowerCase();
+          const storedId = storedActivity.activityId;
+          
+          // 如果链上已存在，保留（用于更新）
+          if (processedContracts.has(storedAddr)) {
+            return true;
+          }
+          
+          // 如果有 activityId 且在范围内，保留
+          if (storedId !== undefined && storedId > 0 && storedId <= Number(count)) {
+            return true;
+          }
+          
+          // 其他情况，不保留
+          return false;
+        });
+        
+        // 更新 localStorage，只保留有效的活动
+        if (validStoredActivities.length !== storedActivities.length) {
+          console.log(`   🧹 清除 localStorage 中的旧活动: ${storedActivities.length - validStoredActivities.length} 个`);
+          const serialized = validStoredActivities.map((a) => ({
+            ...a,
+            createdAt: a.createdAt.toString(),
+          }));
+          localStorage.setItem("nebulaflow_activities", JSON.stringify(serialized));
         }
       }
       
@@ -567,7 +625,6 @@ export default function ActivitiesPage() {
       }
 
       setSuccess("押金挑战创建成功！");
-      setShowCreateForm(false);
       // 刷新活动列表
       setTimeout(() => {
         fetchAllActivities();
@@ -575,6 +632,185 @@ export default function ActivitiesPage() {
     } catch (err: any) {
       console.error("创建活动错误:", err);
       setError(err.message || "创建活动失败");
+    }
+  };
+
+  const handleSubmitUnified = async (data: { title: string; description: string; depositAmount: string; totalRounds: number; maxParticipants: number }, mode: "deposit" | "nft") => {
+    // 根据模式调用不同的处理函数，保持代码独立
+    try {
+      if (mode === "deposit") {
+        // 押金模式：调用押金活动创建逻辑（完全独立的代码路径）
+        const depositFormData: ActivityFormData = {
+          incentiveType: IncentiveType.DepositPool,
+          creatorName: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "",
+          title: data.title,
+          description: data.description,
+          depositAmount: data.depositAmount,
+          totalRounds: data.totalRounds,
+          maxParticipants: data.maxParticipants,
+          isPublic: true
+        };
+        await handleSubmit(depositFormData);
+        // 创建成功后关闭统一表单
+        setShowCreateUnifiedForm(false);
+      } else {
+        // NFT 模式：调用 NFT 活动创建逻辑（完全独立的代码路径）
+        const nftFormData = {
+          title: data.title,
+          description: data.description,
+          totalRounds: data.totalRounds,
+          maxParticipants: data.maxParticipants
+        };
+        await handleSubmitNFT(nftFormData);
+        // 创建成功后关闭统一表单
+        setShowCreateUnifiedForm(false);
+      }
+    } catch (err) {
+      // 错误已经在 handleSubmit 或 handleSubmitNFT 中处理
+      throw err;
+    }
+  };
+
+  const handleSubmitNFT = async (data: { title: string; description: string; totalRounds: number; maxParticipants: number }) => {
+    if (!isConnected || !address) {
+      setError("请先连接钱包");
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    if (!publicClient) {
+      setError("无法连接到区块链，请检查网络连接。");
+      return;
+    }
+
+    try {
+      const creatorName = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "";
+      if (!creatorName) {
+        setError("请先连接钱包");
+        return;
+      }
+      
+      const title = String(data.title || "").trim();
+      const description = String(data.description || "").trim();
+      if (!title) {
+        setError("活动标题不能为空");
+        return;
+      }
+      if (!description) {
+        setError("活动描述不能为空");
+        return;
+      }
+
+      const totalRounds = Number(data.totalRounds || 0);
+      const maxParticipants = Number(data.maxParticipants || 0);
+      if (totalRounds <= 0) {
+        setError("活动天数必须大于 0");
+        return;
+      }
+      if (maxParticipants <= 0) {
+        setError("最大参与人数必须大于 0");
+        return;
+      }
+
+      console.log("创建 NFT 活动参数:");
+      console.log("  - creatorName:", creatorName);
+      console.log("  - title:", title);
+      console.log("  - description:", description);
+      console.log("  - totalRounds:", totalRounds);
+      console.log("  - maxParticipants:", maxParticipants);
+
+      const hash = await writeContractAsync({
+        address: NFT_ACTIVITY_FACTORY_ADDRESS as `0x${string}`,
+        abi: NFT_ACTIVITY_FACTORY_ABI,
+        functionName: "createNFTActivity",
+        args: [
+          title,
+          description,
+          BigInt(totalRounds),
+          BigInt(maxParticipants),
+          true, // isPublic
+          creatorName
+        ]
+      });
+
+      console.log("✅ 交易已提交，哈希:", hash);
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      console.log("✅ 交易已确认:", receipt);
+
+      let activityId: number | null = null;
+      let activityContract: string | null = null;
+
+      for (const log of receipt.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: NFT_ACTIVITY_FACTORY_ABI,
+            data: log.data,
+            topics: log.topics,
+          });
+
+          if (decoded.eventName === "NFTActivityCreated") {
+            activityContract = (decoded.args as any).nftActivityAddress;
+            activityId = Number((decoded.args as any).activityId);
+            console.log("✅ 解析到 NFTActivityCreated 事件");
+            break;
+          }
+        } catch (err) {
+          continue;
+        }
+      }
+
+      if (!activityId || !activityContract) {
+        console.warn("⚠️ 无法从事件中解析活动信息，尝试从 ActivityRegistry 获取");
+        try {
+          const count = await publicClient.readContract({
+            address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+            abi: ACTIVITY_REGISTRY_ABI,
+            functionName: "activityCount"
+          }) as bigint;
+          activityId = Number(count);
+          const metadata = await publicClient.readContract({
+            address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+            abi: ACTIVITY_REGISTRY_ABI,
+            functionName: "getActivityMetadataTuple",
+            args: [count]
+          }) as any;
+          activityContract = metadata[0];
+        } catch (err) {
+          console.error("从 ActivityRegistry 获取活动信息失败:", err);
+        }
+      }
+
+      if (activityId && activityContract) {
+        const newActivity: ActivityMetadata = {
+          activityContract: activityContract,
+          creator: address,
+          creatorName: creatorName,
+          title: title,
+          description: description,
+          createdAt: BigInt(Math.floor(Date.now() / 1000)),
+          isPublic: true,
+          incentiveType: IncentiveType.NFTPool,
+          activityId: activityId
+        };
+
+        saveActivity(newActivity);
+        console.log("✅ 活动已保存到本地存储");
+
+        setSuccess("NFT 活动创建成功！");
+        setShowCreateNFTForm(false);
+        setTimeout(() => {
+          fetchAllActivities();
+        }, 2000);
+      } else {
+        setError("活动创建成功，但无法获取活动信息。请刷新页面查看。");
+      }
+    } catch (err: any) {
+      console.error("创建 NFT 活动失败:", err);
+      const errorMessage = err.shortMessage || err.message || "创建 NFT 活动失败";
+      setError(errorMessage.includes("revert") ? errorMessage.split("revert")[1]?.trim() || "创建失败" : errorMessage);
     }
   };
 
@@ -819,15 +1055,18 @@ export default function ActivitiesPage() {
             style={{
               display: "flex",
               justifyContent: "center",
-              marginBottom: showCreateForm ? 40 : 60,
+              gap: 16,
+              marginBottom: showCreateUnifiedForm ? 40 : 60,
             }}
           >
+            {/* 统一创建活动按钮 */}
             <button
               onClick={() => {
                 if (!isConnected) {
                   connect({ connector: injected() });
                 } else {
-                  setShowCreateForm(!showCreateForm);
+                  setShowCreateUnifiedForm(!showCreateUnifiedForm);
+                  setShowCreateNFTForm(false); // 关闭 NFT 活动表单
                   setError(null);
                   setSuccess(null);
                 }
@@ -835,10 +1074,10 @@ export default function ActivitiesPage() {
               style={{
                 padding: "16px 32px",
                 borderRadius: 12,
-                border: "1px solid rgba(255, 255, 255, 0.3)",
-                background: showCreateForm 
-                  ? "rgba(59, 130, 246, 0.3)" 
-                  : "rgba(255, 255, 255, 0.1)",
+                border: "1px solid rgba(120, 119, 198, 0.3)",
+                background: showCreateUnifiedForm 
+                  ? "rgba(120, 119, 198, 0.3)" 
+                  : "rgba(120, 119, 198, 0.1)",
                 color: "#ffffff",
                 fontSize: 16,
                 fontWeight: 600,
@@ -847,27 +1086,27 @@ export default function ActivitiesPage() {
                 backdropFilter: "blur(10px)",
               }}
               onMouseEnter={(e) => {
-                if (!showCreateForm) {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.2)";
+                if (!showCreateUnifiedForm) {
+                  e.currentTarget.style.background = "rgba(120, 119, 198, 0.2)";
                   e.currentTarget.style.transform = "translateY(-2px)";
-                  e.currentTarget.style.boxShadow = "0 10px 30px rgba(255, 255, 255, 0.2)";
+                  e.currentTarget.style.boxShadow = "0 10px 30px rgba(120, 119, 198, 0.3)";
                 }
               }}
               onMouseLeave={(e) => {
-                if (!showCreateForm) {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                if (!showCreateUnifiedForm) {
+                  e.currentTarget.style.background = "rgba(120, 119, 198, 0.1)";
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "none";
                 }
               }}
             >
-              {showCreateForm ? "收起创建栏" : "创建活动"}
+              {showCreateUnifiedForm ? "收起创建栏" : "创建活动"}
             </button>
           </div>
         </FadeIn>
 
-        {/* 创建活动表单 */}
-        {showCreateForm && isConnected && (
+        {/* 创建 NFT 活动表单 */}
+        {showCreateNFTForm && isConnected && (
           <FadeIn delay={0.4} duration={0.5}>
             <div
               style={{
@@ -887,7 +1126,7 @@ export default function ActivitiesPage() {
                 }}
               >
 
-                <CreateActivityForm onSubmit={handleSubmit} isSubmitting={isPending} address={address || undefined} />
+                <CreateNFTActivityForm onSubmit={handleSubmitNFT} isSubmitting={isPending} address={address || undefined} />
 
                 {success && (
                   <div style={{
@@ -919,39 +1158,55 @@ export default function ActivitiesPage() {
           </FadeIn>
         )}
 
-        {showCreateForm && !isConnected && (
+        {/* 统一创建活动表单 */}
+        {showCreateUnifiedForm && isConnected && (
           <FadeIn delay={0.4} duration={0.5}>
             <div
               style={{
-                maxWidth: 500,
+                maxWidth: 900,
                 width: "100%",
                 margin: "0 auto 60px",
-                padding: "40px 24px",
-                textAlign: "center",
-                borderRadius: 24,
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                backdropFilter: "blur(10px)",
               }}
             >
-              <p style={{ fontSize: 18, color: "#ffffff", marginBottom: 24 }}>
-                请先连接钱包以创建活动
-              </p>
-              <button
-                onClick={() => connect({ connector: injected() })}
+              <div
                 style={{
-                  padding: "12px 24px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255, 255, 255, 0.3)",
-                  background: "linear-gradient(135deg, rgba(120, 119, 198, 0.3), rgba(236, 72, 153, 0.3))",
-                  color: "#ffffff",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
+                  padding: 40,
+                  borderRadius: 24,
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  backdropFilter: "blur(20px)",
+                  boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
                 }}
               >
-                连接钱包
-              </button>
+
+                <CreateUnifiedActivityForm onSubmit={handleSubmitUnified} isSubmitting={isPending} address={address || undefined} />
+
+                {success && (
+                  <div style={{
+                    marginTop: 20,
+                    padding: 16,
+                    borderRadius: 12,
+                    background: "rgba(34,211,238,0.2)",
+                    color: "#22d3ee",
+                    fontSize: 14
+                  }}>
+                    {success}
+                  </div>
+                )}
+
+                {error && (
+                  <div style={{
+                    marginTop: 20,
+                    padding: 16,
+                    borderRadius: 12,
+                    background: "rgba(239,68,68,0.2)",
+                    color: "#fca5a5",
+                    fontSize: 14
+                  }}>
+                    {error}
+                  </div>
+                )}
+              </div>
             </div>
           </FadeIn>
         )}
@@ -1129,13 +1384,23 @@ export default function ActivitiesPage() {
                       gap: 24,
                     }}
                   >
-                    {visibleActivities.map((activity, index) => (
+                    {visibleActivities.map((activity, index) => {
+                    // fix: 根据 incentiveType 判断使用哪个卡片组件
+                    const isNFT = activity.incentiveType === 1; // NFT 模式
+                    return isNFT ? (
+                      <NFTActivityCard
+                        key={`${activity.activityContract}-${activity.activityId ?? index}`}
+                        activity={activity}
+                        hideIfSettled={true}
+                      />
+                    ) : (
                       <ActivityCard
                         key={`${activity.activityContract}-${activity.activityId ?? index}`}
-                        activity={activity} // 使用保存的真实 activityId
-                        hideIfSettled={true} // 传递 prop 来隐藏已结束的活动
+                        activity={activity}
+                        hideIfSettled={true}
                       />
-                    ))}
+                    );
+                  })}
                   </div>
                 );
               })()}
@@ -1162,13 +1427,23 @@ export default function ActivitiesPage() {
                     gap: 24,
                   }}
                 >
-                  {visibleActivities.map((activity, index) => (
-                    <ActivityCard
-                      key={`${activity.activityContract}-${activity.activityId ?? index}`}
-                      activity={activity} // 使用保存的真实 activityId
-                      hideIfSettled={true} // 传递 prop 来隐藏已结束的活动
-                    />
-                  ))}
+                  {visibleActivities.map((activity, index) => {
+                    // fix: 根据 incentiveType 判断使用哪个卡片组件
+                    const isNFT = activity.incentiveType === 1; // NFT 模式
+                    return isNFT ? (
+                      <NFTActivityCard
+                        key={`${activity.activityContract}-${activity.activityId ?? index}`}
+                        activity={activity}
+                        hideIfSettled={true}
+                      />
+                    ) : (
+                      <ActivityCard
+                        key={`${activity.activityContract}-${activity.activityId ?? index}`}
+                        activity={activity}
+                        hideIfSettled={true}
+                      />
+                    );
+                  })}
                 </div>
               );
             })()

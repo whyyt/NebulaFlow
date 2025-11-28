@@ -12,8 +12,8 @@ import { parseEther, decodeEventLog } from "viem";
 import { ParticleField } from "../../components/animations/ParticleField";
 
 // 合约地址（最新部署）
-const ACTIVITY_FACTORY_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const ACTIVITY_FACTORY_ADDRESS = "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650";
+const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
 
 export default function CreateActivityPage() {
   const { address, isConnected } = useAccount();

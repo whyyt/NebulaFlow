@@ -1,6 +1,7 @@
-// 激励类型枚举（仅押金池模式）
+// 激励类型枚举
 export enum IncentiveType {
-  DepositPool = 0  // 押金奖池模式
+  DepositPool = 0,  // 押金奖池模式
+  NFTPool = 1       // NFT奖池模式（完全独立，不共享代码）
 }
 
 // 活动状态枚举
@@ -19,7 +20,7 @@ export interface ActivityMetadata {
   description: string;
   createdAt: bigint;
   isPublic: boolean;
-  incentiveType: IncentiveType;  // 0=押金池
+  incentiveType: IncentiveType;  // 0=押金池, 1=NFT奖池
   activityId?: number; // 可选的活动ID（链上的真实ID）
   isCompleted?: boolean; // 是否成功完成（分到奖金）
   isEliminated?: boolean; // 是否被淘汰

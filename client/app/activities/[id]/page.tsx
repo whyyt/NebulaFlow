@@ -11,7 +11,7 @@ import { ParticleField } from "../../../components/animations/ParticleField";
 import { PrizePoolAnimation } from "../../../components/animations/PrizePoolAnimation";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
 
 // 活动状态枚举（对应合约中的 Status）
 enum ActivityStatus {
@@ -26,9 +26,8 @@ export default function ActivityDetailPage() {
   const searchParams = useSearchParams();
   const { address, isConnected } = useAccount();
   
-  // 判断是否从 My Journey 页面跳转过来
-  const fromProfile = searchParams.get("from") === "profile" || 
-    (typeof window !== "undefined" && document.referrer.includes("/profile"));
+  // 判断是否从 My Journey 页面跳转过来（只检查 URL 参数，不检查 referrer）
+  const fromProfile = searchParams.get("from") === "profile";
   const { writeContractAsync, data: hash, isPending } = useWriteContract();
   const publicClient = usePublicClient();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({

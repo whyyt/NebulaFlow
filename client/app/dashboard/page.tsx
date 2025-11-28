@@ -7,7 +7,7 @@ import { ParticleField } from "../../components/animations/ParticleField";
 import { ActivityMetadata } from "../../lib/types";
 import { ACTIVITY_REGISTRY_ABI, ACTIVITY_FACTORY_ABI } from "../../lib/activityRegistry";
 
-const ACTIVITY_FACTORY_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // ActivityFactory 合约地址（最新部署）
+const ACTIVITY_FACTORY_ADDRESS = "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650"; // ActivityFactory 合约地址（最新部署）
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();

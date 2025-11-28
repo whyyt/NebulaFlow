@@ -3,14 +3,16 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useAccount, useReadContract, useConnect, useDisconnect, usePublicClient } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { ActivityMetadata } from "../../lib/types";
+import { ActivityMetadata, IncentiveType } from "../../lib/types";
 import { getUserCompletedActivities, saveUserCompletedActivity } from "../../lib/activityStorage";
 import { ActivityCard } from "../../components/activities/ActivityCard";
+import { NFTActivityCard } from "../../components/activities/NFTActivityCard";
 import { ParticleField } from "../../components/animations/ParticleField";
 import { CHALLENGE_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
+import { NFT_ACTIVITY_ABI } from "../../lib/nftActivityRegistry";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // fix: 用于验证活动是否在链上存在
+const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0"; // fix: 用于验证活动是否在链上存在
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
@@ -22,7 +24,7 @@ export default function ProfilePage() {
   const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showFullAddress, setShowFullAddress] = useState(false); // 控制地址显示：false=简略，true=完整
-  const [filterSuccess, setFilterSuccess] = useState<"all" | "active" | "success" | "failed">("all"); // all=全部，active=参与中，success=成功坚持，failed=未成功
+  const [filterSuccess, setFilterSuccess] = useState<"all" | "active" | "success" | "failed">("success"); // all=全部，active=参与中，success=成功坚持，failed=未成功
   const publicClient = usePublicClient();
   const [activityStatuses, setActivityStatuses] = useState<Record<string, { isCompleted: boolean; isEliminated: boolean; challengeStatus?: number }>>({}); // fix: 添加 challengeStatus 字段
 
@@ -211,14 +213,15 @@ export default function ProfilePage() {
         // 使用验证后的有效活动列表
         const activitiesToSync = validActivities;
         if (publicClient && address && isConnected && activitiesToSync.length > 0) {
-          const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean }> = {};
+          const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean; challengeStatus?: number }> = {};
           
           // 先使用 localStorage 中的状态作为默认值
           activitiesToSync.forEach(activity => {
             if (activity.activityContract) {
               statusMap[activity.activityContract.toLowerCase()] = {
                 isCompleted: activity.isCompleted ?? false,
-                isEliminated: activity.isEliminated ?? false
+                isEliminated: activity.isEliminated ?? false,
+                challengeStatus: undefined // 初始化为 undefined，等待链上数据
               };
             }
           });
@@ -241,29 +244,37 @@ export default function ProfilePage() {
                 setTimeout(() => reject(new Error("读取超时")), 5000)
               );
               
+              // 根据活动类型选择不同的 ABI
+              const isNFTActivity = activity.incentiveType === IncentiveType.NFTPool;
+              const activityABI = isNFTActivity ? NFT_ACTIVITY_ABI : CHALLENGE_ABI;
+              
               const [participantResult, challengeStatusResult] = await Promise.all([
                 Promise.race([
                   publicClient.readContract({
                     address: contractAddress,
-                    abi: CHALLENGE_ABI,
+                    abi: activityABI,
                     functionName: "getParticipantInfo",
-                    args: [address as `0x${string}`]
+                    args: address ? [address as `0x${string}`] : undefined
                   }),
                   timeoutPromise
                 ]) as Promise<any>,
                 Promise.race([
                   publicClient.readContract({
                     address: contractAddress,
-                    abi: CHALLENGE_ABI,
+                    abi: activityABI,
                     functionName: "viewStatus"
                   }),
                   timeoutPromise
                 ]) as Promise<any>
               ]);
               
-              if (participantResult && Array.isArray(participantResult) && participantResult.length >= 7) {
+              if (participantResult && Array.isArray(participantResult)) {
+                // 押金活动：participantResult[1] = eliminated, participantResult[6] = isCompleted
+                // NFT 活动：participantResult[1] = eliminated, participantResult[4] = isCompleted
                 const isEliminated = participantResult[1] || false;
-                const isCompleted = participantResult[6] || false;
+                const isCompleted = isNFTActivity 
+                  ? (participantResult[4] || false) 
+                  : (participantResult[6] || false);
                 const challengeStatus = challengeStatusResult !== undefined ? Number(challengeStatusResult) : undefined;
                 
                 statusMap[activity.activityContract.toLowerCase()] = {
@@ -303,12 +314,13 @@ export default function ProfilePage() {
           });
         } else {
           // 如果没有链上数据，使用 localStorage 中的状态
-          const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean }> = {};
+          const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean; challengeStatus?: number }> = {};
           participatedActivities.forEach(activity => {
             if (activity.activityContract) {
               statusMap[activity.activityContract.toLowerCase()] = {
                 isCompleted: activity.isCompleted ?? false,
-                isEliminated: activity.isEliminated ?? false
+                isEliminated: activity.isEliminated ?? false,
+                challengeStatus: undefined // 如果没有链上数据，challengeStatus 为 undefined
               };
             }
           });
@@ -752,206 +764,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* 指标卡片区域 - Galxe 风格 */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {/* 作为活动创建者 - 移到最前面 */}
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderRadius: 16,
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  background: "rgba(255, 255, 255, 0.03)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  作为活动创建者
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff", marginBottom: 4 }}>
-                  {activities.filter(a => a.creator.toLowerCase() === address?.toLowerCase()).length}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
-                  Created
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderRadius: 16,
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  background: "rgba(255, 255, 255, 0.03)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  参与活动数
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff", marginBottom: 4 }}>
-                  {activities.length}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
-                  -- +0 (7D)
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderRadius: 16,
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  background: "rgba(255, 255, 255, 0.03)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  押金池活动
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff", marginBottom: 4 }}>
-                  {activities.filter(a => a.incentiveType === 0).length}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
-                  -- +0 (7D)
-                </div>
-              </div>
-            </div>
-
-            {/* 活动列表标题和筛选 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h2
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 600,
-                    margin: 0,
-                    color: "#ffffff",
-                  }}
-                >
-                  参与的活动
-                </h2>
-                <button
-                  onClick={handleRefresh}
-                  disabled={loading}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(255, 255, 255, 0.2)",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    color: "#ffffff",
-                    cursor: loading ? "not-allowed" : "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: "all 0.2s",
-                    opacity: loading ? 0.5 : 1,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!loading) {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!loading) {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                    }
-                  }}
-                >
-                  {loading ? "刷新中..." : "🔄 刷新"}
-                </button>
-              </div>
-              
-              {/* 筛选按钮 */}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {/* fix: 参与中的活动按钮 - 在成功坚持左侧 */}
-                <button
-                  onClick={() => {
-                    setFilterSuccess(filterSuccess === "active" ? "all" : "active");
-                  }}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    border: `1px solid ${filterSuccess === "active" ? "rgba(59, 130, 246, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
-                    background: filterSuccess === "active" ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (filterSuccess !== "active") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (filterSuccess !== "active") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                    }
-                  }}
-                >
-                  参与中
-                </button>
-                <button
-                  onClick={() => {
-                    setFilterSuccess(filterSuccess === "success" ? "all" : "success");
-                  }}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    border: `1px solid ${filterSuccess === "success" ? "rgba(34, 197, 94, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
-                    background: filterSuccess === "success" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (filterSuccess !== "success") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (filterSuccess !== "success") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                    }
-                  }}
-                >
-                  成功坚持
-                </button>
-                <button
-                  onClick={() => {
-                    setFilterSuccess(filterSuccess === "failed" ? "all" : "failed");
-                  }}
-                  style={{
-                    padding: "8px 16px",
-                    borderRadius: 8,
-                    border: `1px solid ${filterSuccess === "failed" ? "rgba(239, 68, 68, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
-                    background: filterSuccess === "failed" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                    color: "#ffffff",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 500,
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (filterSuccess !== "failed") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (filterSuccess !== "failed") {
-                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                    }
-                  }}
-                >
-                  未成功
-                </button>
-              </div>
-            </div>
 
             {/* 活动列表 */}
             {(() => {
@@ -973,18 +785,70 @@ export default function ProfilePage() {
                   // 全部显示
                   return true;
                 } else if (filterSuccess === "active") {
-                  // fix: 参与中的活动：已报名 && (未开始 || 进行中) && 未被淘汰
+                  // fix: 进行中的活动：已报名 && (未开始 || 进行中) && 未被淘汰
                   // 注意：这里假设用户已报名（因为活动在 localStorage 中）
+                  // 如果 challengeStatus 为 undefined，说明链上数据还未同步，暂时不显示（等待同步完成）
+                  if (challengeStatus === undefined) {
+                    return false; // 等待链上数据同步
+                  }
                   const isScheduled = challengeStatus === 0;
                   const isActive = challengeStatus === 1;
+                  // 必须已报名（活动在 localStorage 中），且活动状态为未开始或进行中，且未被淘汰
                   return (isScheduled || isActive) && !isEliminated;
                 } else if (filterSuccess === "success") {
-                  // 成功坚持：分得了奖金的活动（已完成且未被淘汰）
-                  return isCompleted && !isEliminated;
+                  // 成功坚持：活动已结束 && 已完成 && 未被淘汰
+                  // 只有活动结束后，才归到成功坚持类别
+                  const isSettled = challengeStatus === 2; // 活动已结束
+                  return isSettled && isCompleted && !isEliminated;
                 } else if (filterSuccess === "failed") {
                   // 未成功：未分得奖金的活动（被淘汰）
                   return isEliminated;
                 }
+                return true;
+              });
+
+              // 分类函数：根据活动描述和类型将活动分类
+              const categorizeActivity = (activity: ActivityMetadata): "Professional Web3" | "Social Web3" | "Lifestyle" | null => {
+                const description = (activity.description || "").toLowerCase();
+                
+                // Professional Web3: 描述中包含"黑客松"或"会议"
+                if (description.includes("黑客松") || description.includes("会议")) {
+                  return "Professional Web3";
+                }
+                
+                // Social Web3: 描述中包含"集会"或"一起"
+                if (description.includes("集会") || description.includes("一起")) {
+                  return "Social Web3";
+                }
+                
+                // Lifestyle: 仅押金奖池类活动（incentiveType === 0）
+                if (activity.incentiveType === 0) { // 0 = DepositPool
+                  return "Lifestyle";
+                }
+                
+                // 如果都不匹配，返回 null（不显示在分类中）
+                return null;
+              };
+
+              // 将活动分类到三个类别
+              // Lifestyle 需要应用筛选逻辑（参与中、成功坚持、未成功）
+              let lifestyleActivities = filteredActivities.filter(a => categorizeActivity(a) === "Lifestyle");
+              
+              // Professional Web3 和 Social Web3 显示所有符合条件的活动（不限制必须是NFT活动）
+              // 不受筛选按钮影响，显示所有参与的活动
+              const professionalActivities = activities.filter(a => {
+                const category = categorizeActivity(a);
+                if (category !== "Professional Web3") return false;
+                // 显示所有参与的活动，不限制类型
+                return true;
+              });
+              
+              // Social Web3 分类：包含所有 Social Web3 活动（包括进行中和已结束的）
+              // 渲染时根据状态显示：进行中显示预览卡片，已结束显示 🏆 卡片
+              const socialActivities = activities.filter(a => {
+                const category = categorizeActivity(a);
+                if (category !== "Social Web3") return false;
+                // 包含所有 Social Web3 活动，不限制状态
                 return true;
               });
               
@@ -993,6 +857,9 @@ export default function ProfilePage() {
                 filterSuccess,
                 totalActivities: activities.length,
                 filteredCount: filteredActivities.length,
+                professionalCount: professionalActivities.length,
+                socialCount: socialActivities.length,
+                lifestyleCount: lifestyleActivities.length,
                 activityStatuses,
                 activities: activities.map(a => {
                   const contractKey = a.activityContract?.toLowerCase() || "";
@@ -1003,6 +870,7 @@ export default function ProfilePage() {
                   return {
                     title: a.title,
                     contract: a.activityContract,
+                    category: categorizeActivity(a),
                     localStorage: { isCompleted: a.isCompleted, isEliminated: a.isEliminated },
                     chainStatus: status
                   };
@@ -1010,84 +878,677 @@ export default function ProfilePage() {
                 filtered: filteredActivities.map(a => a.title)
               });
 
-              if (filteredActivities.length === 0) {
+
+              // Social Web3 已结束活动显示组件：显示 🏆 图标 + 标题和日期（紫色边框）
+              const SocialWeb3CompletedCard = ({ activity }: { activity: ActivityMetadata }) => {
+                // 根据活动类型选择 ABI
+                const isNFTActivity = activity.incentiveType === IncentiveType.NFTPool;
+                const activityABI = isNFTActivity ? NFT_ACTIVITY_ABI : CHALLENGE_ABI;
+                
+                // 从链上读取 totalRounds（活动持续天数）和 startTime（活动开始时间）
+                const { data: totalRounds } = useReadContract({
+                  address: activity.activityContract as `0x${string}` | undefined,
+                  abi: activityABI,
+                  functionName: "totalRounds",
+                  query: {
+                    enabled: !!activity.activityContract && isConnected
+                  }
+                });
+                
+                const { data: startTime } = useReadContract({
+                  address: activity.activityContract as `0x${string}` | undefined,
+                  abi: activityABI,
+                  functionName: "startTime",
+                  query: {
+                    enabled: !!activity.activityContract && isConnected
+                  }
+                });
+                
+                // 格式化日期
+                const formatDate = (timestamp: bigint) => {
+                  const date = new Date(Number(timestamp) * 1000);
+                  return date.toLocaleDateString("zh-CN", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric"
+                  });
+                };
+                
+                // 计算活动结束日期：开始日期 + 持续天数
+                // 优先使用 startTime（活动实际开始时间），如果为 0 或不存在则使用 createdAt
+                // totalRounds 是天数，每天 86400 秒
+                const getEndDate = () => {
+                  if (!totalRounds) {
+                    // 如果无法读取 totalRounds，回退到显示创建日期
+                    return formatDate(activity.createdAt);
+                  }
+                  
+                  // 确定开始时间：优先使用 startTime，如果为 0 或不存在则使用 createdAt
+                  let startTimestamp: number;
+                  if (startTime && Number(startTime) > 0) {
+                    startTimestamp = Number(startTime);
+                  } else {
+                    startTimestamp = Number(activity.createdAt);
+                  }
+                  
+                  // 计算结束时间：开始时间 + 持续天数（每天 86400 秒）
+                  const daysInSeconds = Number(totalRounds) * 86400;
+                  const endTimestamp = BigInt(startTimestamp + daysInSeconds);
+                  return formatDate(endTimestamp);
+                };
+
                 return (
                   <div
                     style={{
-                      padding: "60px 40px",
-                      textAlign: "center",
-                      borderRadius: 16,
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      background: "rgba(255, 255, 255, 0.03)",
-                      backdropFilter: "blur(20px)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "20px 12px", // 减小左右边距，使边框更贴合内容
+                      borderRadius: 12,
+                      border: "2px solid rgba(139, 92, 246, 0.35)", // 紫色边框 - 更淡的颜色
+                      background: "rgba(139, 92, 246, 0.05)", // 淡紫色背景
+                      transition: "all 0.3s",
+                      width: "fit-content", // 宽度自适应内容
+                      minWidth: "auto", // 移除最小宽度限制
                     }}
                   >
-                    <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.6 }}>📚</div>
-                    <p style={{ fontSize: 16, opacity: 0.8, margin: "0 0 8px 0", color: "#ffffff", fontWeight: 500 }}>
-                      {filterSuccess === "all"
-                        ? "还没有参与的活动"
-                        : filterSuccess === "active"
-                        ? "还没有参与中的活动"
-                        : filterSuccess === "success"
-                        ? "还没有成功坚持的活动"
-                        : "还没有未成功的活动"}
-                    </p>
-                    <p style={{ fontSize: 13, opacity: 0.6, margin: "0 0 24px 0", color: "#ffffff" }}>
-                      {filterSuccess === "all"
-                        ? "参与活动后，活动将自动记录在这里"
-                        : filterSuccess === "active"
-                        ? "正在进行的活动将显示在这里"
-                        : filterSuccess === "success"
-                        ? "参与活动并坚持到最后，成功完成的活动将显示在这里"
-                        : "被淘汰的活动将显示在这里"}
-                    </p>
-                    {filterSuccess === "all" && (
-                      <Link
-                        href="/activities"
+                    {/* 🏆 图标 */}
+                    <div style={{ fontSize: 40, filter: "drop-shadow(0 0 8px rgba(139, 92, 246, 0.5))" }}>
+                      🏆
+                    </div>
+                    
+                    {/* 活动标题 */}
+                    <div style={{ 
+                      fontSize: 15, 
+                      fontWeight: 600, 
+                      color: "#ffffff",
+                      textAlign: "center",
+                      wordBreak: "break-word",
+                    }}>
+                      {activity.title}
+                    </div>
+                    
+                    {/* 日期 - 显示活动结束日期（开始日期 + 持续天数） */}
+                    <div style={{ 
+                      fontSize: 12, 
+                      color: "rgba(255, 255, 255, 0.6)" 
+                    }}>
+                      {getEndDate()}
+                    </div>
+                  </div>
+                );
+              };
+
+              // NFT 显示组件（移到外部，确保hooks正常工作）
+              const NFTDisplayComponent = ({ activity }: { activity: ActivityMetadata }) => {
+                const [nftTokens, setNftTokens] = useState<bigint[]>([]);
+
+                // 获取用户拥有的NFT数量（仅对NFT活动）
+                const { data: balance } = useReadContract({
+                  address: activity.activityContract as `0x${string}` | undefined,
+                  abi: [
+                    {
+                      type: "function",
+                      name: "balanceOf",
+                      inputs: [{ name: "owner", type: "address" }],
+                      outputs: [{ name: "", type: "uint256" }],
+                      stateMutability: "view"
+                    }
+                  ] as const,
+                  functionName: "balanceOf",
+                  args: address ? [address] : undefined,
+                  query: {
+                    enabled: !!activity.activityContract && !!address && isConnected && activity.incentiveType === IncentiveType.NFTPool
+                  }
+                });
+
+                useEffect(() => {
+                  if (balance && Number(balance) > 0) {
+                    // 获取所有tokenId
+                    const fetchTokens = async () => {
+                      if (!publicClient || !address || !activity.activityContract) return;
+                      const count = Number(balance);
+                      const tokens: bigint[] = [];
+                      for (let i = 0; i < count; i++) {
+                        try {
+                          const tokenId = await publicClient.readContract({
+                            address: activity.activityContract as `0x${string}`,
+                            abi: [
+                              {
+                                type: "function",
+                                name: "tokenOfOwnerByIndex",
+                                inputs: [
+                                  { name: "owner", type: "address" },
+                                  { name: "index", type: "uint256" }
+                                ],
+                                outputs: [{ name: "", type: "uint256" }],
+                                stateMutability: "view"
+                              }
+                            ] as const,
+                            functionName: "tokenOfOwnerByIndex",
+                            args: [address, BigInt(i)]
+                          });
+                          tokens.push(tokenId as bigint);
+                        } catch (e) {
+                          console.error(`Failed to fetch token ${i}:`, e);
+                        }
+                      }
+                      setNftTokens(tokens);
+                    };
+                    fetchTokens();
+                  } else {
+                    setNftTokens([]);
+                  }
+                }, [balance, address, activity.activityContract, publicClient]);
+
+                // 格式化日期
+                const formatDate = (timestamp: bigint) => {
+                  const date = new Date(Number(timestamp) * 1000);
+                  return date.toLocaleDateString("zh-CN", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric"
+                  });
+                };
+
+                const hasNFT = balance && Number(balance) > 0 && nftTokens.length > 0;
+                const isNFTActivity = activity.incentiveType === IncentiveType.NFTPool;
+
+                return (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                      padding: 20,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      background: "rgba(255, 255, 255, 0.03)",
+                      transition: "all 0.3s",
+                    }}
+                    onClick={() => {
+                      if (activity.activityId !== undefined) {
+                        if (isNFTActivity) {
+                          window.location.href = `/nft-activities/${activity.activityId}?from=profile`;
+                        } else {
+                          window.location.href = `/activities/${activity.activityId}?from=profile`;
+                        }
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                      e.currentTarget.style.cursor = "pointer";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)";
+                    }}
+                  >
+                    {/* NFT 标识 */}
+                    {hasNFT && (
+                      <div style={{ 
+                        display: "flex", 
+                        alignItems: "center", 
+                        gap: 12,
+                        marginBottom: 8
+                      }}>
+                        <span style={{ fontSize: 32, filter: "drop-shadow(0 0 8px rgba(139, 92, 246, 0.5))" }}>🏆</span>
+                        {nftTokens.length > 0 && (
+                          <div style={{ 
+                            display: "flex", 
+                            gap: 6, 
+                            flexWrap: "wrap" 
+                          }}>
+                            {nftTokens.map((tokenId, idx) => (
+                              <span 
+                                key={idx} 
+                                style={{
+                                  fontSize: 12,
+                                  padding: "4px 8px",
+                                  borderRadius: 6,
+                                  background: "rgba(139, 92, 246, 0.2)",
+                                  border: "1px solid rgba(139, 92, 246, 0.3)",
+                                  color: "rgba(255, 255, 255, 0.8)",
+                                }}
+                              >
+                                #{Number(tokenId)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* 活动名称 */}
+                    <div style={{ 
+                      fontSize: 16, 
+                      fontWeight: 600, 
+                      color: "#ffffff",
+                      marginBottom: 4
+                    }}>
+                      {activity.title}
+                    </div>
+                    
+                    {/* 日期 */}
+                    <div style={{ 
+                      fontSize: 12, 
+                      color: "rgba(255, 255, 255, 0.5)" 
+                    }}>
+                      {formatDate(activity.createdAt)}
+                    </div>
+                  </div>
+                );
+              };
+
+              // 渲染分类模块的函数
+              const renderCategorySection = (
+                categoryName: string,
+                categoryActivities: ActivityMetadata[],
+                categoryColor: string,
+                isNFTDisplay: boolean = false
+              ) => {
+                return (
+                  <div
+                    key={categoryName}
+                    style={{
+                      marginBottom: 0,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: 20,
+                        fontWeight: 600,
+                        color: categoryColor,
+                        marginBottom: 16,
+                        paddingBottom: 12,
+                        borderBottom: `2px solid ${categoryColor}40`,
+                      }}
+                    >
+                      {categoryName}
+                    </h3>
+                    {categoryActivities.length === 0 ? (
+                      <div
                         style={{
-                          display: "inline-block",
-                          padding: "10px 20px",
+                          padding: "40px 20px",
+                          textAlign: "center",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          background: "rgba(255, 255, 255, 0.02)",
+                          color: "rgba(255, 255, 255, 0.5)",
+                          fontSize: 14,
+                        }}
+                      >
+                        暂无活动
+                      </div>
+                    ) : isNFTDisplay ? (
+                      // NFT 横向排列显示
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 12,
+                        }}
+                      >
+                        {categoryActivities.map((activity) => (
+                          <NFTDisplayComponent key={activity.activityContract || activity.activityId} activity={activity} />
+                        ))}
+                      </div>
+                    ) : (
+                      // 活动卡片网格显示（Lifestyle）
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                          gap: 20,
+                        }}
+                      >
+                        {categoryActivities.map((activity) => {
+                          const contractKey = activity.activityContract?.toLowerCase() || "";
+                          const status = activityStatuses[contractKey] || {
+                            isCompleted: activity.isCompleted ?? false,
+                            isEliminated: activity.isEliminated ?? false,
+                            challengeStatus: undefined
+                          };
+                          return (
+                            <ActivityCard
+                              key={activity.activityContract || activity.activityId}
+                              activity={{
+                                ...activity,
+                                isCompleted: status.isCompleted,
+                                isEliminated: status.isEliminated,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              };
+
+              return (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {/* Lifestyle 分类 - 活动卡片显示 */}
+                  <div>
+                    <div
+                      style={{
+                        marginBottom: 20,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 600,
+                          color: "rgba(34, 197, 94, 1)",
+                          marginBottom: 12,
+                        }}
+                      >
+                        Lifestyle
+                      </h3>
+                      
+                      {/* 筛选按钮 - 仅应用于Lifestyle */}
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
+                      {/* 进行中的活动按钮 */}
+                      <button
+                        onClick={() => {
+                          setFilterSuccess(filterSuccess === "active" ? "all" : "active");
+                        }}
+                        style={{
+                          padding: "8px 16px",
                           borderRadius: 8,
-                          border: "1px solid rgba(255, 255, 255, 0.2)",
-                          background: "rgba(255, 255, 255, 0.05)",
+                          border: `1px solid ${filterSuccess === "active" ? "rgba(59, 130, 246, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                          background: filterSuccess === "active" ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.05)",
                           color: "#ffffff",
-                          textDecoration: "none",
+                          cursor: "pointer",
                           fontSize: 13,
                           fontWeight: 500,
                           transition: "all 0.2s",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+                          if (filterSuccess !== "active") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                          e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                          if (filterSuccess !== "active") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                          }
                         }}
                       >
-                        去 Activity Hub 看看 →
-                      </Link>
+                        进行中
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterSuccess(filterSuccess === "success" ? "all" : "success");
+                        }}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: `1px solid ${filterSuccess === "success" ? "rgba(34, 197, 94, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                          background: filterSuccess === "success" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                          color: "#ffffff",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          transition: "all 0.2s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (filterSuccess !== "success") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (filterSuccess !== "success") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                          }
+                        }}
+                      >
+                        成功坚持
+                      </button>
+                      <button
+                        onClick={() => {
+                          setFilterSuccess(filterSuccess === "failed" ? "all" : "failed");
+                        }}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: `1px solid ${filterSuccess === "failed" ? "rgba(239, 68, 68, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                          background: filterSuccess === "failed" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                          color: "#ffffff",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          transition: "all 0.2s",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (filterSuccess !== "failed") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (filterSuccess !== "failed") {
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                          }
+                        }}
+                      >
+                        未成功
+                      </button>
+                      </div>
+                    </div>
+                    
+                    {/* Lifestyle 活动列表 */}
+                    {lifestyleActivities.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "40px 20px",
+                          textAlign: "center",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          background: "rgba(255, 255, 255, 0.02)",
+                          color: "rgba(255, 255, 255, 0.5)",
+                          fontSize: 14,
+                        }}
+                      >
+                        暂无活动
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                          gap: 20,
+                        }}
+                      >
+                        {lifestyleActivities.map((activity) => {
+                          const contractKey = activity.activityContract?.toLowerCase() || "";
+                          const status = activityStatuses[contractKey] || {
+                            isCompleted: activity.isCompleted ?? false,
+                            isEliminated: activity.isEliminated ?? false,
+                            challengeStatus: undefined
+                          };
+                          return (
+                            <ActivityCard
+                              key={activity.activityContract || activity.activityId}
+                              activity={{
+                                ...activity,
+                                isCompleted: status.isCompleted,
+                                isEliminated: status.isEliminated,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                );
-              }
 
-              return (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-                    gap: 24,
-                  }}
-                >
-                  {filteredActivities.map((activity, index) => (
-                    <ActivityCard key={`${activity.activityContract}-${activity.activityId ?? index}`} activity={activity} />
-                  ))}
+                  {/* Social Web3 分类 - 只显示进行中的活动，活动结束后显示 🏆 卡片 */}
+                  <div style={{ marginTop: 40 }}>
+                    <div
+                      style={{
+                        marginBottom: 0,
+                      }}
+                    >
+                      <h3
+                        style={{
+                          fontSize: 20,
+                          fontWeight: 600,
+                          color: "rgba(236, 72, 153, 1)",
+                          marginBottom: 16,
+                          paddingBottom: 12,
+                          borderBottom: "2px solid rgba(236, 72, 153, 1)40",
+                        }}
+                      >
+                        Social Web3
+                      </h3>
+                      {socialActivities.length === 0 ? (
+                        <div
+                          style={{
+                            padding: "40px 20px",
+                            textAlign: "center",
+                            borderRadius: 12,
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            background: "rgba(255, 255, 255, 0.02)",
+                            color: "rgba(255, 255, 255, 0.5)",
+                            fontSize: 14,
+                          }}
+                        >
+                          暂无活动
+                        </div>
+                      ) : (
+                        <>
+                          {/* 进行中的活动 - 使用 grid 布局，与 Activity Hub 保持一致 */}
+                          {socialActivities.some(a => {
+                            const contractKey = a.activityContract?.toLowerCase() || "";
+                            const status = activityStatuses[contractKey] || {
+                              isCompleted: a.isCompleted ?? false,
+                              isEliminated: a.isEliminated ?? false,
+                              challengeStatus: undefined
+                            };
+                            const challengeStatus = status.challengeStatus;
+                            const isSettled = challengeStatus === 2;
+                            const isInProgress = challengeStatus === 0 || challengeStatus === 1;
+                            return (isInProgress || challengeStatus === undefined) && !isSettled;
+                          }) && (
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                                gap: 24, // 与 Activity Hub 保持一致
+                                marginBottom: socialActivities.some(a => {
+                                  const contractKey = a.activityContract?.toLowerCase() || "";
+                                  const status = activityStatuses[contractKey] || {
+                                    isCompleted: a.isCompleted ?? false,
+                                    isEliminated: a.isEliminated ?? false,
+                                    challengeStatus: undefined
+                                  };
+                                  return status.challengeStatus === 2;
+                                }) ? 20 : 0, // 如果有已结束的活动，添加底部间距
+                              }}
+                            >
+                              {socialActivities.map((activity) => {
+                                const contractKey = activity.activityContract?.toLowerCase() || "";
+                                const status = activityStatuses[contractKey] || {
+                                  isCompleted: activity.isCompleted ?? false,
+                                  isEliminated: activity.isEliminated ?? false,
+                                  challengeStatus: undefined
+                                };
+                                const challengeStatus = status.challengeStatus;
+                                const isSettled = challengeStatus === 2;
+                                const isInProgress = challengeStatus === 0 || challengeStatus === 1;
+                                
+                                // 只显示进行中的活动
+                                if (!isSettled && (isInProgress || challengeStatus === undefined)) {
+                                  if (activity.incentiveType === IncentiveType.NFTPool) {
+                                    return (
+                                      <NFTActivityCard
+                                        key={activity.activityContract || activity.activityId}
+                                        activity={activity}
+                                        hideIfSettled={false}
+                                      />
+                                    );
+                                  } else {
+                                    return (
+                                      <ActivityCard
+                                        key={activity.activityContract || activity.activityId}
+                                        activity={{
+                                          ...activity,
+                                          isCompleted: status.isCompleted,
+                                          isEliminated: status.isEliminated,
+                                        }}
+                                      />
+                                    );
+                                  }
+                                }
+                                return null;
+                              })}
+                            </div>
+                          )}
+                          
+                          {/* 已结束的活动 - 使用 flexbox 布局，紫色框根据内容自适应大小 */}
+                          {socialActivities.some(a => {
+                            const contractKey = a.activityContract?.toLowerCase() || "";
+                            const status = activityStatuses[contractKey] || {
+                              isCompleted: a.isCompleted ?? false,
+                              isEliminated: a.isEliminated ?? false,
+                              challengeStatus: undefined
+                            };
+                            return status.challengeStatus === 2;
+                          }) && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 20, // 紫色框之间的间距 - 增大间距
+                                alignItems: "flex-start",
+                              }}
+                            >
+                              {socialActivities.map((activity) => {
+                                const contractKey = activity.activityContract?.toLowerCase() || "";
+                                const status = activityStatuses[contractKey] || {
+                                  isCompleted: activity.isCompleted ?? false,
+                                  isEliminated: activity.isEliminated ?? false,
+                                  challengeStatus: undefined
+                                };
+                                const challengeStatus = status.challengeStatus;
+                                
+                                // 只显示已结束的活动
+                                if (challengeStatus === 2) {
+                                  return (
+                                    <SocialWeb3CompletedCard 
+                                      key={activity.activityContract || activity.activityId} 
+                                      activity={activity} 
+                                    />
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Professional Web3 分类 - NFT显示 */}
+                  <div style={{ marginTop: 40 }}>
+                    {renderCategorySection(
+                      "Professional Web3",
+                      professionalActivities,
+                      "rgba(59, 130, 246, 1)", // 蓝色
+                      true // NFT显示模式
+                    )}
+                  </div>
                 </div>
               );
             })()}
           </div>
-        )}
+        )
+        }
       </div>
     </div>
   );
