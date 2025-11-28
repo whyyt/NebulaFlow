@@ -14,8 +14,8 @@ import { getStoredActivities } from "../../lib/activityStorage";
 import { parseEther } from "viem";
 import Link from "next/link";
 
-const ACTIVITY_FACTORY_ADDRESS = "0x4A679253410272dd5232B3Ff7cF5dbB88f295319";
-const ACTIVITY_REGISTRY_ADDRESS = "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f"; // 直接使用硬编码地址，避免异步加载延迟
+const ACTIVITY_FACTORY_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
+const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // 直接使用硬编码地址，避免异步加载延迟
 
 export default function ActivitiesPage() {
   const { address, isConnected } = useAccount();

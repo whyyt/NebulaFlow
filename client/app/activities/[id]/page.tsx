@@ -11,7 +11,7 @@ import { ParticleField } from "../../../components/animations/ParticleField";
 import { PrizePoolAnimation } from "../../../components/animations/PrizePoolAnimation";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f";
+const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 
 // 活动状态枚举（对应合约中的 Status）
 enum ActivityStatus {
@@ -45,6 +45,7 @@ export default function ActivityDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [successVisible, setSuccessVisible] = useState(false);
+  const [pendingJoinHash, setPendingJoinHash] = useState<`0x${string}` | null>(null); // fix: 记录待确认的报名交易哈希
 
   // 从 ActivityRegistry 获取活动元数据
   const { data: metadata } = useReadContract({
@@ -234,16 +235,36 @@ export default function ActivityDetailPage() {
     }
   }, [userParticipantInfo, address, isConnected]);
 
-  // 更新加载状态
+  // 更新加载状态（添加超时机制，避免一直加载）
   useEffect(() => {
     if (activityMetadata && challengeInfo !== null) {
       setLoading(false);
+    } else {
+      // fix: 如果10秒后还没有数据，停止加载并显示错误
+      const timeout = setTimeout(() => {
+        if (loading) {
+          console.warn("⚠️ 活动详情加载超时");
+          setLoading(false);
+          if (!activityMetadata) {
+            setError("无法加载活动信息，请检查活动ID是否正确");
+          }
+        }
+      }, 10000);
+      return () => clearTimeout(timeout);
     }
-  }, [activityMetadata, challengeInfo]);
+  }, [activityMetadata, challengeInfo, loading]);
 
   // 交易确认后刷新状态
   useEffect(() => {
     if (isConfirmed) {
+      // fix: 如果是报名交易，延迟1秒后显示成功消息
+      if (pendingJoinHash && hash === pendingJoinHash) {
+        setTimeout(() => {
+          setSuccess("报名成功！");
+          setPendingJoinHash(null); // 清除标记
+        }, 1000);
+      }
+      
       // 延迟刷新，确保链上状态已更新
       setTimeout(() => {
         refetchParticipantInfo();
@@ -253,7 +274,7 @@ export default function ActivityDetailPage() {
         // window.location.reload();
       }, 1500);
     }
-  }, [isConfirmed, refetchParticipantInfo, refetchCurrentRound, refetchTotalRounds]);
+  }, [isConfirmed, hash, pendingJoinHash, refetchParticipantInfo, refetchCurrentRound, refetchTotalRounds]);
 
   // 成功提示自动消失（带淡出效果，2秒后消失）
   useEffect(() => {
@@ -518,14 +539,16 @@ export default function ActivityDetailPage() {
       setSuccess(null);
       
       if (depositAmount) {
-        await writeContractAsync({
+        const txHash = await writeContractAsync({
           address: challengeAddress as `0x${string}`,
           abi: activityABI,
           functionName: joinFunctionName,
           value: depositAmount
         });
-        // fix: 报名交易提交后立即显示成功消息，按钮状态会通过 hasJoined 立即更新
-        setSuccess("报名成功！");
+        // fix: 记录报名交易哈希，等待确认后延迟1秒显示成功消息
+        if (txHash) {
+          setPendingJoinHash(txHash);
+        }
         
         // fix: 报名成功后立即记录活动到用户档案
         if (activityMetadata) {

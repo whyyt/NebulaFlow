@@ -7,8 +7,10 @@ import { ActivityMetadata } from "../../lib/types";
 import { getUserCompletedActivities, saveUserCompletedActivity } from "../../lib/activityStorage";
 import { ActivityCard } from "../../components/activities/ActivityCard";
 import { ParticleField } from "../../components/animations/ParticleField";
-import { CHALLENGE_ABI } from "../../lib/activityRegistry";
+import { CHALLENGE_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
 import Link from "next/link";
+
+const ACTIVITY_REGISTRY_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // fix: 用于验证活动是否在链上存在
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
@@ -20,9 +22,9 @@ export default function ProfilePage() {
   const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showFullAddress, setShowFullAddress] = useState(false); // 控制地址显示：false=简略，true=完整
-  const [filterSuccess, setFilterSuccess] = useState<boolean | null>(null); // null=全部，true=成功坚持，false=未成功
+  const [filterSuccess, setFilterSuccess] = useState<"all" | "active" | "success" | "failed">("all"); // all=全部，active=参与中，success=成功坚持，failed=未成功
   const publicClient = usePublicClient();
-  const [activityStatuses, setActivityStatuses] = useState<Record<string, { isCompleted: boolean; isEliminated: boolean }>>({});
+  const [activityStatuses, setActivityStatuses] = useState<Record<string, { isCompleted: boolean; isEliminated: boolean; challengeStatus?: number }>>({}); // fix: 添加 challengeStatus 字段
 
   useEffect(() => {
     setMounted(true);
@@ -51,29 +53,223 @@ export default function ProfilePage() {
           activityId: a.activityId,
           activityContract: a.activityContract
         })));
-        setActivities(participatedActivities);
         
-        // fix: 从链上同步每个活动的状态
-        if (publicClient && address && isConnected && participatedActivities.length > 0) {
+        // fix: 严格验证活动是否在当前链上存在，过滤掉所有无效的活动
+        let validActivities: typeof participatedActivities = [];
+        if (publicClient && participatedActivities.length > 0) {
+          try {
+            // 第一步：获取当前链上的活动总数
+            const currentActivityCount = await publicClient.readContract({
+              address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+              abi: ACTIVITY_REGISTRY_ABI,
+              functionName: "activityCount"
+            }) as bigint;
+            
+            const maxActivityId = Number(currentActivityCount);
+            console.log(`📊 当前链上活动总数: ${maxActivityId}`);
+            
+            // 第二步：验证每个活动是否在链上存在
+            const validationResults = await Promise.allSettled(
+              participatedActivities.map(async (activity) => {
+                // 如果有 activityId，先检查是否超出当前活动总数
+                if (activity.activityId !== undefined) {
+                  // fix: 如果 activityId 超出当前活动总数，直接视为无效
+                  if (activity.activityId > maxActivityId || activity.activityId <= 0) {
+                    console.warn(`⚠️ 活动 ${activity.title} (ID: ${activity.activityId}) 超出当前活动范围 (1-${maxActivityId})，将被移除`);
+                    return { activity, isValid: false, reason: "activityId_out_of_range" };
+                  }
+                  
+                  // 验证活动是否在 ActivityRegistry 中存在
+                  try {
+                    const timeoutPromise = new Promise((_, reject) => 
+                      setTimeout(() => reject(new Error("验证超时")), 3000)
+                    );
+                    
+                    const readPromise = publicClient.readContract({
+                      address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+                      abi: ACTIVITY_REGISTRY_ABI,
+                      functionName: "getActivityMetadataTuple",
+                      args: [BigInt(activity.activityId)]
+                    });
+                    
+                    const result = await Promise.race([readPromise, timeoutPromise]) as any;
+                    
+                    // 验证返回的数据是否有效（至少应该有 title）
+                    if (result && Array.isArray(result) && result.length >= 4 && result[3]) {
+                      // fix: 验证返回的合约地址是否与存储的一致（如果存储了合约地址）
+                      if (activity.activityContract && result[0]) {
+                        const chainContract = String(result[0]).toLowerCase();
+                        const storedContract = activity.activityContract.toLowerCase();
+                        if (chainContract !== storedContract) {
+                          console.warn(`⚠️ 活动 ${activity.title} (ID: ${activity.activityId}) 的合约地址不匹配，将被移除`);
+                          return { activity, isValid: false, reason: "contract_mismatch" };
+                        }
+                      }
+                      return { activity, isValid: true };
+                    } else {
+                      console.warn(`⚠️ 活动 ${activity.title} (ID: ${activity.activityId}) 返回数据无效，将被移除`);
+                      return { activity, isValid: false, reason: "invalid_data" };
+                    }
+                  } catch (err: any) {
+                    const errorMsg = err?.message || err?.shortMessage || String(err);
+                    console.warn(`⚠️ 活动 ${activity.title} (ID: ${activity.activityId}) 在链上不存在:`, errorMsg);
+                    return { activity, isValid: false, reason: "not_found_on_chain" };
+                  }
+                } else if (activity.activityContract) {
+                  // 如果没有 activityId 但有合约地址，验证合约是否存在且属于当前 ActivityRegistry
+                  try {
+                    // 先验证合约是否存在
+                    const timeoutPromise1 = new Promise((_, reject) => 
+                      setTimeout(() => reject(new Error("验证超时")), 3000)
+                    );
+                    
+                    const readCreatorPromise = publicClient.readContract({
+                      address: activity.activityContract as `0x${string}`,
+                      abi: CHALLENGE_ABI,
+                      functionName: "creator"
+                    });
+                    
+                    await Promise.race([readCreatorPromise, timeoutPromise1]);
+                    
+                    // 然后验证合约是否在 ActivityRegistry 中注册
+                    const timeoutPromise2 = new Promise((_, reject) => 
+                      setTimeout(() => reject(new Error("验证超时")), 3000)
+                    );
+                    
+                    const readActivityIdPromise = publicClient.readContract({
+                      address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+                      abi: ACTIVITY_REGISTRY_ABI,
+                      functionName: "contractToActivity",
+                      args: [activity.activityContract as `0x${string}`]
+                    });
+                    
+                    const registeredActivityId = await Promise.race([readActivityIdPromise, timeoutPromise2]) as bigint;
+                    
+                    // 如果返回的 activityId 为 0，说明合约未在 ActivityRegistry 中注册
+                    if (registeredActivityId === BigInt(0)) {
+                      console.warn(`⚠️ 活动 ${activity.title} 的合约未在 ActivityRegistry 中注册，将被移除`);
+                      return { activity, isValid: false, reason: "not_registered" };
+                    }
+                    
+                    // 验证 activityId 是否在有效范围内
+                    if (Number(registeredActivityId) > maxActivityId || Number(registeredActivityId) <= 0) {
+                      console.warn(`⚠️ 活动 ${activity.title} 的注册ID (${registeredActivityId}) 超出范围，将被移除`);
+                      return { activity, isValid: false, reason: "registered_id_out_of_range" };
+                    }
+                    
+                    return { activity, isValid: true };
+                  } catch (err: any) {
+                    const errorMsg = err?.message || err?.shortMessage || String(err);
+                    console.warn(`⚠️ 活动 ${activity.title} 的合约验证失败:`, errorMsg);
+                    return { activity, isValid: false, reason: "contract_validation_failed" };
+                  }
+                } else {
+                  // 既没有 activityId 也没有合约地址，视为无效
+                  console.warn(`⚠️ 活动 ${activity.title} 缺少活动ID和合约地址，将被移除`);
+                  return { activity, isValid: false, reason: "missing_ids" };
+                }
+              })
+            );
+            
+            // 第三步：收集所有有效的活动
+            validActivities = validationResults
+              .filter((result): result is PromiseFulfilledResult<{ activity: typeof participatedActivities[0]; isValid: boolean; reason?: string }> => 
+                result.status === "fulfilled" && result.value.isValid
+              )
+              .map(result => result.value.activity);
+            
+            const invalidCount = participatedActivities.length - validActivities.length;
+            console.log(`✅ 验证完成: ${validActivities.length} 个活动有效，${invalidCount} 个活动无效`);
+            
+            // 第四步：更新 localStorage，只保留有效的活动
+            if (invalidCount > 0) {
+              const key = `nebulaflow_completed_${address.toLowerCase()}`;
+              const serialized = validActivities.map((a) => ({
+                ...a,
+                createdAt: a.createdAt.toString(),
+              }));
+              localStorage.setItem(key, JSON.stringify(serialized));
+              console.log(`✅ 已清理 ${invalidCount} 个无效活动，保留 ${validActivities.length} 个有效活动`);
+            }
+            
+            setActivities(validActivities);
+          } catch (err: any) {
+            console.error("验证活动时出错:", err);
+            // 如果验证过程出错，清空所有活动（安全策略：只显示确认存在的活动）
+            console.warn("⚠️ 验证过程出错，清空活动列表以确保数据一致性");
+            const key = `nebulaflow_completed_${address.toLowerCase()}`;
+            localStorage.setItem(key, JSON.stringify([]));
+            setActivities([]);
+          }
+        } else {
+          // 如果没有 publicClient，不显示任何活动（安全策略）
+          console.warn("⚠️ 无法验证活动，不显示任何活动");
+          setActivities([]);
+        }
+        
+        // fix: 从链上同步每个活动的状态（添加超时和更好的错误处理）
+        // 使用验证后的有效活动列表
+        const activitiesToSync = validActivities;
+        if (publicClient && address && isConnected && activitiesToSync.length > 0) {
           const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean }> = {};
-          const updatePromises = participatedActivities.map(async (activity) => {
+          
+          // 先使用 localStorage 中的状态作为默认值
+          activitiesToSync.forEach(activity => {
+            if (activity.activityContract) {
+              statusMap[activity.activityContract.toLowerCase()] = {
+                isCompleted: activity.isCompleted ?? false,
+                isEliminated: activity.isEliminated ?? false
+              };
+            }
+          });
+          setActivityStatuses(statusMap); // 立即设置默认状态，避免等待
+          
+          // 然后异步更新链上状态（带超时）
+          const updatePromises = activitiesToSync.map(async (activity) => {
             if (!activity.activityContract) return;
             
+            // 验证地址格式
+            const contractAddress = activity.activityContract as `0x${string}`;
+            if (!contractAddress || contractAddress === "0x" || contractAddress.length !== 42) {
+              console.warn(`⚠️ 活动 ${activity.title} 的合约地址无效:`, contractAddress);
+              return;
+            }
+            
             try {
-              const result = await publicClient.readContract({
-                address: activity.activityContract as `0x${string}`,
-                abi: CHALLENGE_ABI,
-                functionName: "getParticipantInfo",
-                args: [address as `0x${string}`]
-              });
+              // 并行读取参与信息和活动状态
+              const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error("读取超时")), 5000)
+              );
               
-              if (result && Array.isArray(result) && result.length >= 7) {
-                const isEliminated = result[1] || false;
-                const isCompleted = result[6] || false;
+              const [participantResult, challengeStatusResult] = await Promise.all([
+                Promise.race([
+                  publicClient.readContract({
+                    address: contractAddress,
+                    abi: CHALLENGE_ABI,
+                    functionName: "getParticipantInfo",
+                    args: [address as `0x${string}`]
+                  }),
+                  timeoutPromise
+                ]) as Promise<any>,
+                Promise.race([
+                  publicClient.readContract({
+                    address: contractAddress,
+                    abi: CHALLENGE_ABI,
+                    functionName: "viewStatus"
+                  }),
+                  timeoutPromise
+                ]) as Promise<any>
+              ]);
+              
+              if (participantResult && Array.isArray(participantResult) && participantResult.length >= 7) {
+                const isEliminated = participantResult[1] || false;
+                const isCompleted = participantResult[6] || false;
+                const challengeStatus = challengeStatusResult !== undefined ? Number(challengeStatusResult) : undefined;
                 
                 statusMap[activity.activityContract.toLowerCase()] = {
                   isCompleted: Boolean(isCompleted),
-                  isEliminated: Boolean(isEliminated)
+                  isEliminated: Boolean(isEliminated),
+                  challengeStatus: challengeStatus // fix: 存储活动状态（0=Scheduled, 1=Active, 2=Settled）
                 };
                 
                 // 如果状态有变化，更新 localStorage
@@ -85,20 +281,26 @@ export default function ProfilePage() {
                   };
                   saveUserCompletedActivity(address, updatedActivity);
                 }
+                
+                // 更新状态
+                setActivityStatuses({ ...statusMap });
               }
-            } catch (err) {
-              console.error(`读取活动 ${activity.title} 的状态失败:`, err);
-              // 如果链上读取失败，使用 localStorage 中的状态
-              statusMap[activity.activityContract.toLowerCase()] = {
-                isCompleted: activity.isCompleted ?? false,
-                isEliminated: activity.isEliminated ?? false
-              };
+            } catch (err: any) {
+              // fix: 更详细的错误处理，不阻塞页面加载
+              const errorMsg = err?.message || err?.shortMessage || String(err);
+              if (errorMsg.includes("returned no data") || errorMsg.includes("0x")) {
+                console.warn(`⚠️ 活动 ${activity.title} 的合约地址可能无效或合约不存在:`, contractAddress);
+              } else {
+                console.warn(`⚠️ 读取活动 ${activity.title} 的状态失败:`, errorMsg);
+              }
+              // 保持使用 localStorage 中的状态，不更新
             }
           });
           
-          await Promise.all(updatePromises);
-          setActivityStatuses(statusMap);
-          console.log("✅ 链上状态同步完成:", statusMap);
+          // 不等待所有 Promise 完成，避免阻塞页面加载
+          Promise.allSettled(updatePromises).then(() => {
+            console.log("✅ 链上状态同步完成（部分可能失败）:", statusMap);
+          });
         } else {
           // 如果没有链上数据，使用 localStorage 中的状态
           const statusMap: Record<string, { isCompleted: boolean; isEliminated: boolean }> = {};
@@ -546,28 +748,7 @@ export default function ProfilePage() {
                   </div>
                 </div>
                 
-                {/* 右侧：统计数据 */}
-                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                  <div
-                    style={{
-                      padding: "16px 20px",
-                      borderRadius: 12,
-                      background: "rgba(255, 255, 255, 0.05)",
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      minWidth: 140,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      完成活动
-                    </div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "#ffffff" }}>
-                      {activities.length}+
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff", marginTop: 4 }}>
-                      Activities
-                    </div>
-                  </div>
-                </div>
+                {/* 右侧：统计数据 - 已删除完成活动框 */}
               </div>
             </div>
 
@@ -684,16 +865,16 @@ export default function ProfilePage() {
               
               {/* 筛选按钮 */}
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {/* fix: 参与中的活动按钮 - 在成功坚持左侧 */}
                 <button
                   onClick={() => {
-                    // 如果当前已选中，则取消选择（显示全部）
-                    setFilterSuccess(filterSuccess === true ? null : true);
+                    setFilterSuccess(filterSuccess === "active" ? "all" : "active");
                   }}
                   style={{
                     padding: "8px 16px",
                     borderRadius: 8,
-                    border: `1px solid ${filterSuccess === true ? "rgba(34, 197, 94, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
-                    background: filterSuccess === true ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                    border: `1px solid ${filterSuccess === "active" ? "rgba(59, 130, 246, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                    background: filterSuccess === "active" ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.05)",
                     color: "#ffffff",
                     cursor: "pointer",
                     fontSize: 13,
@@ -701,12 +882,40 @@ export default function ProfilePage() {
                     transition: "all 0.2s",
                   }}
                   onMouseEnter={(e) => {
-                    if (filterSuccess !== true) {
+                    if (filterSuccess !== "active") {
                       e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (filterSuccess !== true) {
+                    if (filterSuccess !== "active") {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                    }
+                  }}
+                >
+                  参与中
+                </button>
+                <button
+                  onClick={() => {
+                    setFilterSuccess(filterSuccess === "success" ? "all" : "success");
+                  }}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border: `1px solid ${filterSuccess === "success" ? "rgba(34, 197, 94, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                    background: filterSuccess === "success" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                    color: "#ffffff",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (filterSuccess !== "success") {
+                      e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (filterSuccess !== "success") {
                       e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
                     }
                   }}
@@ -715,14 +924,13 @@ export default function ProfilePage() {
                 </button>
                 <button
                   onClick={() => {
-                    // 如果当前已选中，则取消选择（显示全部）
-                    setFilterSuccess(filterSuccess === false ? null : false);
+                    setFilterSuccess(filterSuccess === "failed" ? "all" : "failed");
                   }}
                   style={{
                     padding: "8px 16px",
                     borderRadius: 8,
-                    border: `1px solid ${filterSuccess === false ? "rgba(239, 68, 68, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
-                    background: filterSuccess === false ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                    border: `1px solid ${filterSuccess === "failed" ? "rgba(239, 68, 68, 0.5)" : "rgba(255, 255, 255, 0.2)"}`,
+                    background: filterSuccess === "failed" ? "rgba(239, 68, 68, 0.2)" : "rgba(255, 255, 255, 0.05)",
                     color: "#ffffff",
                     cursor: "pointer",
                     fontSize: 13,
@@ -730,12 +938,12 @@ export default function ProfilePage() {
                     transition: "all 0.2s",
                   }}
                   onMouseEnter={(e) => {
-                    if (filterSuccess !== false) {
+                    if (filterSuccess !== "failed") {
                       e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
                     }
                   }}
                   onMouseLeave={(e) => {
-                    if (filterSuccess !== false) {
+                    if (filterSuccess !== "failed") {
                       e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
                     }
                   }}
@@ -753,22 +961,31 @@ export default function ProfilePage() {
                 const contractKey = activity.activityContract?.toLowerCase() || "";
                 const status = activityStatuses[contractKey] || {
                   isCompleted: activity.isCompleted ?? false,
-                  isEliminated: activity.isEliminated ?? false
+                  isEliminated: activity.isEliminated ?? false,
+                  challengeStatus: undefined
                 };
                 
                 const isCompleted = status.isCompleted === true;
                 const isEliminated = status.isEliminated === true;
+                const challengeStatus = status.challengeStatus; // 0=Scheduled, 1=Active, 2=Settled
                 
-                if (filterSuccess === null) {
+                if (filterSuccess === "all") {
                   // 全部显示
                   return true;
-                } else if (filterSuccess === true) {
+                } else if (filterSuccess === "active") {
+                  // fix: 参与中的活动：已报名 && (未开始 || 进行中) && 未被淘汰
+                  // 注意：这里假设用户已报名（因为活动在 localStorage 中）
+                  const isScheduled = challengeStatus === 0;
+                  const isActive = challengeStatus === 1;
+                  return (isScheduled || isActive) && !isEliminated;
+                } else if (filterSuccess === "success") {
                   // 成功坚持：分得了奖金的活动（已完成且未被淘汰）
                   return isCompleted && !isEliminated;
-                } else {
+                } else if (filterSuccess === "failed") {
                   // 未成功：未分得奖金的活动（被淘汰）
                   return isEliminated;
                 }
+                return true;
               });
               
               // 调试信息
@@ -807,20 +1024,24 @@ export default function ProfilePage() {
                   >
                     <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.6 }}>📚</div>
                     <p style={{ fontSize: 16, opacity: 0.8, margin: "0 0 8px 0", color: "#ffffff", fontWeight: 500 }}>
-                      {filterSuccess === null 
+                      {filterSuccess === "all"
                         ? "还没有参与的活动"
-                        : filterSuccess === true
+                        : filterSuccess === "active"
+                        ? "还没有参与中的活动"
+                        : filterSuccess === "success"
                         ? "还没有成功坚持的活动"
                         : "还没有未成功的活动"}
                     </p>
                     <p style={{ fontSize: 13, opacity: 0.6, margin: "0 0 24px 0", color: "#ffffff" }}>
-                      {filterSuccess === null
+                      {filterSuccess === "all"
                         ? "参与活动后，活动将自动记录在这里"
-                        : filterSuccess === true
+                        : filterSuccess === "active"
+                        ? "正在进行的活动将显示在这里"
+                        : filterSuccess === "success"
                         ? "参与活动并坚持到最后，成功完成的活动将显示在这里"
                         : "被淘汰的活动将显示在这里"}
                     </p>
-                    {filterSuccess === null && (
+                    {filterSuccess === "all" && (
                       <Link
                         href="/activities"
                         style={{
