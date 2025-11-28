@@ -567,25 +567,6 @@ export default function ProfilePage() {
                       Activities
                     </div>
                   </div>
-                  <div
-                    style={{
-                      padding: "16px 20px",
-                      borderRadius: 12,
-                      background: "rgba(255, 255, 255, 0.05)",
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      minWidth: 140,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 8, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                      押金池活动
-                    </div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "#ffffff" }}>
-                      {activities.filter(a => a.incentiveType === 0).length}
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff", marginTop: 4 }}>
-                      Deposit Pool
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -598,6 +579,26 @@ export default function ProfilePage() {
                 gap: 16,
               }}
             >
+              {/* 作为活动创建者 - 移到最前面 */}
+              <div
+                style={{
+                  padding: "20px 24px",
+                  borderRadius: 16,
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  background: "rgba(255, 255, 255, 0.03)",
+                  backdropFilter: "blur(20px)",
+                }}
+              >
+                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  作为活动创建者
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff", marginBottom: 4 }}>
+                  {activities.filter(a => a.creator.toLowerCase() === address?.toLowerCase()).length}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
+                  Created
+                </div>
+              </div>
               <div
                 style={{
                   padding: "20px 24px",
@@ -634,25 +635,6 @@ export default function ProfilePage() {
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
                   -- +0 (7D)
-                </div>
-              </div>
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderRadius: 16,
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  background: "rgba(255, 255, 255, 0.03)",
-                  backdropFilter: "blur(20px)",
-                }}
-              >
-                <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12, color: "#ffffff", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  作为活动创建者
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: "#ffffff", marginBottom: 4 }}>
-                  {activities.filter(a => a.creator.toLowerCase() === address?.toLowerCase()).length}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.5, color: "#ffffff" }}>
-                  Created
                 </div>
               </div>
             </div>
