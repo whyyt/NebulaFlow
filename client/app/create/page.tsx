@@ -6,14 +6,14 @@ import { injected } from "wagmi/connectors";
 import { useRouter } from "next/navigation";
 import { CreateActivityForm } from "../../components/activities/CreateActivityForm";
 import { ActivityFormData, ActivityMetadata, IncentiveType } from "../../lib/types";
-import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
-import { saveActivity } from "../../lib/activityStorage";
+import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI, CHALLENGE_ABI } from "../../lib/activityRegistry";
+import { saveActivity, saveUserCompletedActivity } from "../../lib/activityStorage";
 import { parseEther, decodeEventLog } from "viem";
 import { ParticleField } from "../../components/animations/ParticleField";
 
 // 合约地址（最新部署）
-const ACTIVITY_FACTORY_ADDRESS = "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650";
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
+const ACTIVITY_FACTORY_ADDRESS = "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9";
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042";
 
 export default function CreateActivityPage() {
   const { address, isConnected } = useAccount();
@@ -189,6 +189,32 @@ export default function CreateActivityPage() {
         
         saveActivity(newActivity);
         console.log("✅ 活动已保存到 localStorage");
+
+        // 创建成功后自动报名
+        try {
+          console.log("自动报名活动:", activityContract);
+          const joinHash = await writeContractAsync({
+            address: activityContract as `0x${string}`,
+            abi: CHALLENGE_ABI,
+            functionName: "joinChallenge",
+            value: depositWei
+          });
+          
+          await publicClient.waitForTransactionReceipt({ hash: joinHash });
+          console.log("✅ 自动报名成功");
+          
+          // 保存活动到用户档案
+          const participatedActivity: ActivityMetadata = {
+            ...newActivity,
+            isCompleted: false,
+            isEliminated: false,
+          };
+          saveUserCompletedActivity(address, participatedActivity);
+        } catch (joinErr: any) {
+          console.error("自动报名失败:", joinErr);
+          // 报名失败不影响创建成功，只记录错误
+          setError(`活动创建成功，但自动报名失败: ${joinErr.message || "未知错误"}`);
+        }
       }
 
       setSuccess("押金挑战创建成功！");

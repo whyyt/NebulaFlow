@@ -11,7 +11,7 @@ import { ParticleField } from "../../../components/animations/ParticleField";
 import { PrizePoolAnimation } from "../../../components/animations/PrizePoolAnimation";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042";
 
 // 活动状态枚举（对应合约中的 Status）
 enum ActivityStatus {
@@ -477,16 +477,101 @@ export default function ActivityDetailPage() {
       return;
     }
 
+    if (!address || !isConnected) {
+      setError("请先连接钱包");
+      return;
+    }
+
     try {
       setError(null);
       setSuccess(null);
       
-      await writeContractAsync({
-        address: challengeAddress as `0x${string}`,
-        abi: activityABI,
-        functionName: startFunctionName
-      });
-      setSuccess("活动已开始");
+      // 检查创建者是否已报名（如果已报名，使用组合方法；否则只开始活动）
+      let useCombinedMethod = false;
+      if (publicClient) {
+        try {
+          const latestParticipantInfo = await publicClient.readContract({
+            address: challengeAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: "getParticipantInfo",
+            args: [address]
+          });
+          
+          const hasJoined = latestParticipantInfo[0];
+          const isEliminated = latestParticipantInfo[1];
+          const lastCheckInRound = latestParticipantInfo[2];
+          const NOT_CHECKED_THRESHOLD = BigInt(2 ** 255);
+          
+          // 如果已报名且未淘汰且未签到过，使用组合方法
+          useCombinedMethod = hasJoined && !isEliminated && (
+            lastCheckInRound === null || 
+            BigInt(String(lastCheckInRound)) >= NOT_CHECKED_THRESHOLD
+          );
+        } catch (err) {
+          console.warn("无法检查签到状态，将只开始活动:", err);
+        }
+      }
+      
+      // 使用组合方法：一次签名完成开始活动和签到
+      if (useCombinedMethod) {
+        try {
+          const hash = await writeContractAsync({
+            address: challengeAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: "forceStartAndCheckIn"
+          });
+          
+          // 等待交易确认
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash });
+          }
+          
+          setSuccess("活动已开始");
+          
+          // 刷新参与信息
+          setTimeout(() => {
+            refetchParticipantInfo();
+            refetchCurrentRound();
+          }, 1000);
+        } catch (err: any) {
+          console.error("开始活动并签到失败:", err);
+          // 如果组合方法失败，尝试只开始活动
+          const startHash = await writeContractAsync({
+            address: challengeAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: startFunctionName
+          });
+          
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash: startHash });
+          }
+          
+          setSuccess("活动已开始");
+          
+          setTimeout(() => {
+            refetchParticipantInfo();
+            refetchCurrentRound();
+          }, 1000);
+        }
+      } else {
+        // 如果创建者未报名，只开始活动
+        const startHash = await writeContractAsync({
+          address: challengeAddress as `0x${string}`,
+          abi: activityABI,
+          functionName: startFunctionName
+        });
+        
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: startHash });
+        }
+        
+        setSuccess("活动已开始");
+        
+        setTimeout(() => {
+          refetchParticipantInfo();
+          refetchCurrentRound();
+        }, 1000);
+      }
     } catch (err: any) {
       console.error("开始活动失败:", err);
       setError(err.shortMessage || err.message || "开始活动失败");

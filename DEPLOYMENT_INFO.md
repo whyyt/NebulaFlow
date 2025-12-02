@@ -1,13 +1,19 @@
 # 合约部署信息
 
-## 最新部署地址（2025-11-27 - 最新）
+## 最新部署地址（2025-01-XX - 最新）
 
 ### 合约地址
-- **ActivityRegistry**: `0xE3011A37A904aB90C8881a99BD1F6E21401f1522`
-- **ActivityFactory**: `0x457cCf29090fe5A24c19c1bc95F492168C0EaFdb`
+- **ActivityRegistry**: `0x9E545E3C0baAB3E08CdfD552C960A1050f373042`
+- **ActivityFactory**: `0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9`
+- **NFTActivityFactory**: `0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8`
 
 ### 部署账户
 - 部署账户: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- 账户余额: 10001.971221007679001452 ETH
+
+### 新增功能
+- **Social Web3 一次签名创建和报名**: 在 `NFTActivityFactory` 合约中添加了 `createNFTActivityAndJoin` 函数，允许 Social Web3 活动通过一次钱包弹窗完成活动创建和报名参加。
+- **NFTActivity 新增函数**: 添加了 `joinActivityForCreator` 函数，允许工厂合约代表创建者加入活动。
 
 ### 前端配置
 所有前端文件中的合约地址已更新：
@@ -16,16 +22,16 @@
 - `client/app/activities/[id]/page.tsx`
 - `client/app/profile/page.tsx`
 - `client/app/dashboard/page.tsx`
+- `client/app/create-nft/page.tsx`
+- `client/app/nft-activities/[id]/page.tsx`
 
-### 重要修复
-1. ✅ 修复了 `ActivityRegistry.registerActivity` 的 creator 地址问题（现在使用真实用户地址）
-2. ✅ 修复了活动ID索引问题（从1开始，不是0）
-3. ✅ 改进了事件解析逻辑（包括备用方案）
-4. ✅ 删除了所有 NFT 模式相关代码，仅保留押金池模式
+### 部署命令
+```bash
+npx hardhat run scripts/deploy-activity-system.ts --network localhost
+```
 
 ### 测试
 运行以下命令验证部署：
 ```bash
 npx hardhat run scripts/debug_read_activities.ts --network localhost
 ```
-

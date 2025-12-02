@@ -130,4 +130,12 @@ export function saveUserCompletedActivity(userAddress: string, activity: Activit
   }
 }
 
+// 默认导出所有函数，帮助 Turbopack 正确识别导出
+export default {
+  getStoredActivities,
+  saveActivity,
+  clearStoredActivities,
+  getUserCompletedActivities,
+  saveUserCompletedActivity,
+};
 

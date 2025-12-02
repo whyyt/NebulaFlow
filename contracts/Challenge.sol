@@ -112,6 +112,44 @@ contract Challenge {
         startTime = block.timestamp;
     }
 
+    /// @notice 开始活动并自动签到（仅创建者可调用）
+    /// @dev 在一次交易中完成开始活动和创建者签到
+    function forceStartAndCheckIn() external {
+        require(msg.sender == creator, "ONLY_CREATOR");
+        require(status == Status.Scheduled, "ALREADY_STARTED");
+        require(startTime == 0, "ALREADY_STARTED");
+        
+        // 开始活动
+        status = Status.Active;
+        startTime = block.timestamp;
+        
+        // 检查创建者是否已报名
+        Participant storage p = participantInfo[msg.sender];
+        require(p.joined, "CREATOR_NOT_JOINED");
+        require(!p.eliminated, "CREATOR_ELIMINATED");
+        
+        // 计算当前轮次（活动刚开始，应该是0）
+        uint256 currentDay = 0; // 活动刚开始，当前轮次为0
+        require(currentDay < totalRounds, "CHALLENGE_FINISHED");
+        
+        // 检查是否已经签到过
+        require(p.lastCheckInRound == NOT_CHECKED || p.lastCheckInRound < currentDay, "ALREADY_CHECKED_IN_TODAY");
+        
+        // 检查当前轮次是否还在有效期内（第一天，应该总是有效的）
+        uint256 dayEndTime = startTime + (currentDay + 1) * roundDuration;
+        require(block.timestamp < dayEndTime, "DAY_EXPIRED");
+        
+        // 执行签到
+        p.lastCheckInRound = currentDay;
+        
+        // 检查是否完成所有轮次（第一天不可能完成，除非 totalRounds == 1）
+        if (currentDay == totalRounds - 1) {
+            p.isCompleted = true;
+        }
+        
+        emit CheckIn(msg.sender, currentDay, block.timestamp);
+    }
+
     /// @notice 结束活动并自动分配奖励
     /// @dev 仅活动创建者可调用，自动将奖池按完成者人数均分
     function forceEnd() external nonReentrant {

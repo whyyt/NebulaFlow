@@ -6,21 +6,21 @@ import { injected } from "wagmi/connectors";
 import { usePathname, useSearchParams } from "next/navigation";
 import { FadeIn } from "../../components/animations/FadeIn";
 import { ParticleField } from "../../components/animations/ParticleField";
-import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
-import { NFT_ACTIVITY_FACTORY_ABI } from "../../lib/nftActivityRegistry";
+import { ACTIVITY_FACTORY_ABI, ACTIVITY_REGISTRY_ABI, CHALLENGE_ABI } from "../../lib/activityRegistry";
+import { NFT_ACTIVITY_FACTORY_ABI, NFT_ACTIVITY_ABI } from "../../lib/nftActivityRegistry";
 import { CreateUnifiedActivityForm } from "../../components/activities/CreateUnifiedActivityForm";
 import { CreateNFTActivityForm } from "../../components/activities/CreateNFTActivityForm";
 import { ActivityCard } from "../../components/activities/ActivityCard";
 import { NFTActivityCard } from "../../components/activities/NFTActivityCard";
 import { ActivityFormData, ActivityMetadata, IncentiveType, DepositChallengeFormData } from "../../lib/types";
-import { getStoredActivities, saveActivity } from "../../lib/activityStorage";
+import { getStoredActivities, saveActivity, saveUserCompletedActivity } from "../../lib/activityStorage";
 import { parseEther } from "viem";
 import { decodeEventLog } from "viem";
 import Link from "next/link";
 
-const ACTIVITY_FACTORY_ADDRESS = "0x7bc06c482DEAd17c0e297aFbC32f6e63d3846650";
-const NFT_ACTIVITY_FACTORY_ADDRESS = "0xc351628EB244ec633d5f21fBD6621e1a683B1181";
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0"; // 直接使用硬编码地址，避免异步加载延迟
+const ACTIVITY_FACTORY_ADDRESS = "0xa82fF9aFd8f496c3d6ac40E2a0F282E47488CFc9";
+const NFT_ACTIVITY_FACTORY_ADDRESS = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8";
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042"; // 直接使用硬编码地址，避免异步加载延迟
 
 export default function ActivitiesPage() {
   const { address, isConnected } = useAccount();
@@ -620,8 +620,95 @@ export default function ActivitiesPage() {
         args: finalArgs
       });
 
+      let receipt;
       if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
+        receipt = await publicClient.waitForTransactionReceipt({ hash });
+      }
+
+      // 解析事件，获取活动合约地址
+      let activityContract: string | null = null;
+      if (receipt) {
+        for (const log of receipt.logs) {
+          try {
+            const eventAbi = ACTIVITY_FACTORY_ABI.find(
+              item => item.type === "event" && item.name === "DepositChallengeCreated"
+            );
+            if (eventAbi) {
+              const decodedLog = decodeEventLog({
+                abi: [eventAbi],
+                data: log.data,
+                topics: log.topics
+              });
+              activityContract = (decodedLog as any).args.challengeAddress;
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+
+      // 备用方案：从 ActivityRegistry 查询
+      if (!activityContract && publicClient) {
+        try {
+          const count = await publicClient.readContract({
+            address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+            abi: ACTIVITY_REGISTRY_ABI,
+            functionName: "activityCount"
+          }) as bigint;
+          if (count > 0n) {
+            const metadata = await publicClient.readContract({
+              address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+              abi: ACTIVITY_REGISTRY_ABI,
+              functionName: "getActivityMetadataTuple",
+              args: [count]
+            }) as any;
+            if (metadata && Array.isArray(metadata)) {
+              activityContract = metadata[0];
+            }
+          }
+        } catch (err) {
+          console.error("从 ActivityRegistry 获取活动信息失败:", err);
+        }
+      }
+
+      // 创建成功后自动报名
+      if (activityContract && address) {
+        try {
+          console.log("自动报名活动:", activityContract);
+          const joinHash = await writeContractAsync({
+            address: activityContract as `0x${string}`,
+            abi: CHALLENGE_ABI,
+            functionName: "joinChallenge",
+            value: depositWei
+          });
+          
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash: joinHash });
+          }
+          
+          console.log("✅ 自动报名成功");
+          
+          // 保存活动到用户档案
+          const participatedActivity: ActivityMetadata = {
+            activityContract: activityContract,
+            creator: address,
+            creatorName: finalCreatorName,
+            title: finalTitle,
+            description: finalDescription,
+            createdAt: BigInt(Math.floor(Date.now() / 1000)),
+            isPublic: true,
+            incentiveType: IncentiveType.DepositPool,
+            isCompleted: false,
+            isEliminated: false,
+          };
+          
+          saveUserCompletedActivity(address, participatedActivity);
+        } catch (joinErr: any) {
+          console.error("自动报名失败:", joinErr);
+          // 报名失败不影响创建成功，只记录错误
+          setError(`活动创建成功，但自动报名失败: ${joinErr.message || "未知错误"}`);
+        }
       }
 
       setSuccess("押金挑战创建成功！");
@@ -721,23 +808,51 @@ export default function ActivitiesPage() {
       console.log("  - totalRounds:", totalRounds);
       console.log("  - maxParticipants:", maxParticipants);
 
-      const hash = await writeContractAsync({
-        address: NFT_ACTIVITY_FACTORY_ADDRESS as `0x${string}`,
-        abi: NFT_ACTIVITY_FACTORY_ABI,
-        functionName: "createNFTActivity",
-        args: [
-          title,
-          description,
-          BigInt(totalRounds),
-          BigInt(maxParticipants),
-          true, // isPublic
-          creatorName
-        ]
-      });
+      // 判断是否为 Social Web3 活动（Social Web3专用逻辑，完全独立的实现）
+      // Social Web3: 描述中包含"集会"或"一起"
+      const descriptionLower = description.toLowerCase();
+      const isSocialWeb3 = descriptionLower.includes("集会") || descriptionLower.includes("一起");
 
-      console.log("✅ 交易已提交，哈希:", hash);
+      let hash: `0x${string}`;
+      let receipt: any;
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      // Social Web3: 使用普通创建函数，然后单独报名（Social Web3专用逻辑，完全独立的实现，参考Professional Web3但不共用代码）
+      if (isSocialWeb3) {
+        console.log("检测到 Social Web3 活动，使用 createNFTActivity 函数（Social Web3专用逻辑）");
+        hash = await writeContractAsync({
+          address: NFT_ACTIVITY_FACTORY_ADDRESS as `0x${string}`,
+          abi: NFT_ACTIVITY_FACTORY_ABI,
+          functionName: "createNFTActivity",
+          args: [
+            title,
+            description,
+            BigInt(totalRounds),
+            BigInt(maxParticipants),
+            true, // isPublic
+            creatorName
+          ]
+        });
+        console.log("✅ Social Web3 活动创建交易已提交，哈希:", hash);
+      } else {
+        // Professional Web3 或其他: 使用普通创建函数，然后单独报名
+        console.log("检测到 Professional Web3 或其他活动，使用 createNFTActivity 函数");
+        hash = await writeContractAsync({
+          address: NFT_ACTIVITY_FACTORY_ADDRESS as `0x${string}`,
+          abi: NFT_ACTIVITY_FACTORY_ABI,
+          functionName: "createNFTActivity",
+          args: [
+            title,
+            description,
+            BigInt(totalRounds),
+            BigInt(maxParticipants),
+            true, // isPublic
+            creatorName
+          ]
+        });
+        console.log("✅ 交易已提交，哈希:", hash);
+      }
+
+      receipt = await publicClient.waitForTransactionReceipt({ hash });
       console.log("✅ 交易已确认:", receipt);
 
       let activityId: number | null = null;
@@ -798,6 +913,50 @@ export default function ActivitiesPage() {
 
         saveActivity(newActivity);
         console.log("✅ 活动已保存到本地存储");
+
+        // Social Web3: 需要单独报名（Social Web3专用逻辑，完全独立的实现，参考Professional Web3但不共用代码）
+        if (isSocialWeb3) {
+          try {
+            console.log("自动报名 NFT 活动（Social Web3）:", activityContract);
+            const joinHash = await writeContractAsync({
+              address: activityContract as `0x${string}`,
+              abi: NFT_ACTIVITY_ABI,
+              functionName: "joinActivity"
+            });
+            
+            await publicClient.waitForTransactionReceipt({ hash: joinHash });
+            console.log("✅ Social Web3 自动报名成功");
+          } catch (joinErr: any) {
+            console.error("Social Web3 自动报名失败:", joinErr);
+            // 报名失败不影响创建成功，只记录错误
+            setError(`活动创建成功，但自动报名失败: ${joinErr.message || "未知错误"}`);
+          }
+        } else {
+          // Professional Web3 或其他: 需要单独报名
+          try {
+            console.log("自动报名 NFT 活动（Professional Web3）:", activityContract);
+            const joinHash = await writeContractAsync({
+              address: activityContract as `0x${string}`,
+              abi: NFT_ACTIVITY_ABI,
+              functionName: "joinActivity"
+            });
+            
+            await publicClient.waitForTransactionReceipt({ hash: joinHash });
+            console.log("✅ Professional Web3 自动报名成功");
+          } catch (joinErr: any) {
+            console.error("Professional Web3 自动报名失败:", joinErr);
+            // 报名失败不影响创建成功，只记录错误
+            setError(`活动创建成功，但自动报名失败: ${joinErr.message || "未知错误"}`);
+          }
+        }
+        
+        // 保存活动到用户档案（Social Web3 和 Professional Web3 都适用）
+        const participatedActivity: ActivityMetadata = {
+          ...newActivity,
+          isCompleted: false,
+          isEliminated: false,
+        };
+        saveUserCompletedActivity(address, participatedActivity);
 
         setSuccess("NFT 活动创建成功！");
         setShowCreateNFTForm(false);
@@ -1392,12 +1551,14 @@ export default function ActivitiesPage() {
                         key={`${activity.activityContract}-${activity.activityId ?? index}`}
                         activity={activity}
                         hideIfSettled={true}
+                        hideIfActive={true}
                       />
                     ) : (
                       <ActivityCard
                         key={`${activity.activityContract}-${activity.activityId ?? index}`}
                         activity={activity}
                         hideIfSettled={true}
+                        hideIfActive={true}
                       />
                     );
                   })}
@@ -1435,12 +1596,14 @@ export default function ActivitiesPage() {
                         key={`${activity.activityContract}-${activity.activityId ?? index}`}
                         activity={activity}
                         hideIfSettled={true}
+                        hideIfActive={true}
                       />
                     ) : (
                       <ActivityCard
                         key={`${activity.activityContract}-${activity.activityId ?? index}`}
                         activity={activity}
                         hideIfSettled={true}
+                        hideIfActive={true}
                       />
                     );
                   })}

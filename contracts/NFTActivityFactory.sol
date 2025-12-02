@@ -81,5 +81,60 @@ contract NFTActivityFactory {
     function nftActivityCount() external view returns (uint256) {
         return nftActivities.length;
     }
+
+    /// @notice 创建NFT活动并自动让创建者加入（Social Web3专用，完全独立的实现）
+    /// @param _title 活动标题
+    /// @param _description 活动描述
+    /// @param _totalRounds 总轮次数
+    /// @param _maxParticipants 最大参与人数
+    /// @param _isPublic 是否公开
+    /// @param _creatorName 活动创建者名称
+    /// @return activityAddress 活动合约地址
+    /// @return activityId 活动ID
+    function createNFTActivityAndJoin(
+        string memory _title,
+        string memory _description,
+        uint256 _totalRounds,
+        uint256 _maxParticipants,
+        bool _isPublic,
+        string memory _creatorName
+    ) external returns (address activityAddress, uint256 activityId) {
+        require(_totalRounds > 0, "TOTAL_ROUNDS_MUST_BE_GREATER_THAN_ZERO");
+        require(_maxParticipants > 0, "MAX_PARTICIPANTS_MUST_BE_GREATER_THAN_ZERO");
+        
+        uint256 startTime = 0; // 未开始，需要手动开始
+        NFTActivity newActivity = new NFTActivity(
+            _title,
+            _description,
+            msg.sender,
+            _totalRounds,
+            _maxParticipants,
+            startTime
+        );
+
+        activityAddress = address(newActivity);
+        nftActivities.push(activityAddress);
+
+        activityId = activityRegistry.registerActivity(
+            activityAddress,
+            _title,
+            _description,
+            _isPublic,
+            1,  // incentiveType: 1 = NFT奖池
+            msg.sender,  // 传递真实的用户地址作为 creator
+            _creatorName  // 传递创建者名称
+        );
+
+        emit NFTActivityCreated(activityAddress, msg.sender, activityId, _title);
+
+        // 创建后立即让创建者加入（Social Web3专用逻辑，完全独立的实现）
+        newActivity.joinActivityForCreator(address(this), msg.sender);
+
+        return (activityAddress, activityId);
+    }
 }
+
+
+
+
 

@@ -10,7 +10,7 @@ import { ParticleField } from "../../../components/animations/ParticleField";
 import { IncentiveType } from "../../../lib/types";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042";
 
 // NFT 活动状态枚举（完全独立，不共享）
 enum NFTActivityStatus {
@@ -260,7 +260,7 @@ export default function NFTActivityDetailPage() {
   const isActive = activityStatusEnum === NFTActivityStatus.Active;
   const isSettled = activityStatusEnum === NFTActivityStatus.Settled;
 
-  // 开始活动
+  // 开始活动（NFT 活动 - 完全独立的实现，不共用押金活动的代码）
   const handleStartActivity = async () => {
     if (!activityAddress) {
       setError("无法获取活动信息");
@@ -272,16 +272,97 @@ export default function NFTActivityDetailPage() {
       return;
     }
 
+    if (!address || !isConnected) {
+      setError("请先连接钱包");
+      return;
+    }
+
     try {
       setError(null);
       setSuccess(null);
       
-      await writeContractAsync({
-        address: activityAddress as `0x${string}`,
-        abi: activityABI,
-        functionName: startFunctionName
-      });
-      setSuccess("活动已开始");
+      // 检查创建者是否已报名（如果已报名，使用组合方法；否则只开始活动）
+      let useCombinedMethod = false;
+      if (publicClient) {
+        try {
+          const latestParticipantInfo = await publicClient.readContract({
+            address: activityAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: "getParticipantInfo",
+            args: [address]
+          });
+          
+          const hasJoined = latestParticipantInfo[0];
+          const isEliminated = latestParticipantInfo[1];
+          const lastCheckInRound = latestParticipantInfo[2];
+          
+          // NFT 活动：如果已报名且未淘汰且未签到过，使用组合方法
+          // NFT 活动的 getParticipantInfo 会将 NOT_CHECKED 转换为 0 返回
+          // 所以 lastCheckInRound 为 0 表示未签到过
+          const lastCheckInRoundBigInt = BigInt(String(lastCheckInRound));
+          useCombinedMethod = hasJoined && !isEliminated && lastCheckInRoundBigInt === BigInt(0);
+        } catch (err) {
+          console.warn("无法检查签到状态，将只开始活动:", err);
+        }
+      }
+      
+      // 使用组合方法：一次签名完成开始活动和签到
+      if (useCombinedMethod) {
+        try {
+          const hash = await writeContractAsync({
+            address: activityAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: "startActivityAndCheckIn"
+          });
+          
+          // 等待交易确认
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash });
+          }
+          
+          setSuccess("活动已开始");
+          
+          // 刷新参与信息
+          setTimeout(() => {
+            refetchParticipantInfo();
+          }, 1000);
+        } catch (err: any) {
+          console.error("开始活动并签到失败:", err);
+          // 如果组合方法失败，尝试只开始活动
+          const startHash = await writeContractAsync({
+            address: activityAddress as `0x${string}`,
+            abi: activityABI,
+            functionName: startFunctionName
+          });
+          
+          if (publicClient) {
+            await publicClient.waitForTransactionReceipt({ hash: startHash });
+          }
+          
+          setSuccess("活动已开始");
+          
+          setTimeout(() => {
+            refetchParticipantInfo();
+          }, 1000);
+        }
+      } else {
+        // 如果创建者未报名，只开始活动
+        const startHash = await writeContractAsync({
+          address: activityAddress as `0x${string}`,
+          abi: activityABI,
+          functionName: startFunctionName
+        });
+        
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: startHash });
+        }
+        
+        setSuccess("活动已开始");
+        
+        setTimeout(() => {
+          refetchParticipantInfo();
+        }, 1000);
+      }
     } catch (err: any) {
       console.error("开始活动失败:", err);
       setError(err.shortMessage || err.message || "开始活动失败");

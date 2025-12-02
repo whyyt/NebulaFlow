@@ -101,7 +101,7 @@ export default function Home() {
         }}>
           <Link
             href="/features"
-              style={{
+            style={{
               color: "#ffffff",
               textDecoration: "none",
               fontSize: 15,
@@ -111,12 +111,12 @@ export default function Home() {
             }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
-            >
+          >
             Core Features
           </Link>
           <Link
             href="/activities"
-              style={{
+            style={{
               color: "#ffffff",
               textDecoration: "none",
               fontSize: 15,
@@ -131,7 +131,7 @@ export default function Home() {
           </Link>
           <Link
             href="/profile"
-              style={{
+            style={{
               color: "#ffffff",
               textDecoration: "none",
               fontSize: 15,
@@ -141,7 +141,7 @@ export default function Home() {
             }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
-            >
+          >
             My Journey
           </Link>
       </div>

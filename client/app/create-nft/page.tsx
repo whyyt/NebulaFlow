@@ -6,15 +6,15 @@ import { injected } from "wagmi/connectors";
 import { useRouter } from "next/navigation";
 import { CreateNFTActivityForm } from "../../components/activities/CreateNFTActivityForm";
 import { ActivityMetadata, IncentiveType } from "../../lib/types";
-import { NFT_ACTIVITY_FACTORY_ABI } from "../../lib/nftActivityRegistry";
+import { NFT_ACTIVITY_FACTORY_ABI, NFT_ACTIVITY_ABI } from "../../lib/nftActivityRegistry";
 import { ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
-import { saveActivity } from "../../lib/activityStorage";
+import { saveActivity, saveUserCompletedActivity } from "../../lib/activityStorage";
 import { decodeEventLog } from "viem";
 import { ParticleField } from "../../components/animations/ParticleField";
 
 // NFT 活动工厂合约地址（最新部署）
-const NFT_ACTIVITY_FACTORY_ADDRESS = "0xc351628EB244ec633d5f21fBD6621e1a683B1181";
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0";
+const NFT_ACTIVITY_FACTORY_ADDRESS = "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8";
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042";
 
 interface NFTActivityFormData {
   title: string;
@@ -168,6 +168,31 @@ export default function CreateNFTActivityPage() {
 
         saveActivity(newActivity);
         console.log("✅ 活动已保存到本地存储");
+
+        // 创建成功后自动报名
+        try {
+          console.log("自动报名 NFT 活动:", activityContract);
+          const joinHash = await writeContractAsync({
+            address: activityContract as `0x${string}`,
+            abi: NFT_ACTIVITY_ABI,
+            functionName: "joinActivity"
+          });
+          
+          await publicClient.waitForTransactionReceipt({ hash: joinHash });
+          console.log("✅ 自动报名成功");
+          
+          // 保存活动到用户档案
+          const participatedActivity: ActivityMetadata = {
+            ...newActivity,
+            isCompleted: false,
+            isEliminated: false,
+          };
+          saveUserCompletedActivity(address, participatedActivity);
+        } catch (joinErr: any) {
+          console.error("自动报名失败:", joinErr);
+          // 报名失败不影响创建成功，只记录错误
+          setError(`活动创建成功，但自动报名失败: ${joinErr.message || "未知错误"}`);
+        }
 
         setSuccess("NFT 活动创建成功！");
         setTimeout(() => {

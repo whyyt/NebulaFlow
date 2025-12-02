@@ -8,9 +8,10 @@ import { NFT_ACTIVITY_ABI } from "../../lib/nftActivityRegistry";
 interface NFTActivityCardProps {
   activity: ActivityMetadata & { activityId?: number };
   hideIfSettled?: boolean;
+  hideIfActive?: boolean; // 如果为 true，当活动进行中时返回 null
 }
 
-export function NFTActivityCard({ activity, hideIfSettled = false }: NFTActivityCardProps) {
+export function NFTActivityCard({ activity, hideIfSettled = false, hideIfActive = false }: NFTActivityCardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { address, isConnected } = useAccount();
@@ -71,6 +72,11 @@ export function NFTActivityCard({ activity, hideIfSettled = false }: NFTActivity
   const isActive = activityStatus === 1;
 
   if (hideIfSettled && isSettled) {
+    return null;
+  }
+
+  // 如果 hideIfActive 为 true 且活动进行中，返回 null
+  if (hideIfActive && isActive) {
     return null;
   }
 

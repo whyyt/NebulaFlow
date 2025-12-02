@@ -12,7 +12,7 @@ import { CHALLENGE_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry
 import { NFT_ACTIVITY_ABI } from "../../lib/nftActivityRegistry";
 import Link from "next/link";
 
-const ACTIVITY_REGISTRY_ADDRESS = "0x7969c5eD335650692Bc04293B07F5BF2e7A673C0"; // fix: 用于验证活动是否在链上存在
+const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042"; // fix: 用于验证活动是否在链上存在
 
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
@@ -24,10 +24,10 @@ export default function ProfilePage() {
   const disconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showFullAddress, setShowFullAddress] = useState(false); // 控制地址显示：false=简略，true=完整
-  const [filterSuccess, setFilterSuccess] = useState<"all" | "active" | "success" | "failed">("success"); // all=全部，active=参与中，success=成功坚持，failed=未成功
+  const [filterSuccess, setFilterSuccess] = useState<"all" | "active" | "success" | "failed">("active"); // all=全部，active=参与中，success=成功坚持，failed=未成功
   // Social Web3 和 Professional Web3 的独立筛选状态
-  const [socialFilter, setSocialFilter] = useState<"active" | "settled" | null>(null); // null=全部，active=参与中，settled=已结束
-  const [professionalFilter, setProfessionalFilter] = useState<"active" | "settled" | null>(null); // null=全部，active=参与中，settled=已结束
+  const [socialFilter, setSocialFilter] = useState<"active" | "settled" | null>("active"); // null=全部，active=参与中，settled=已结束（默认显示参与中）
+  const [professionalFilter, setProfessionalFilter] = useState<"active" | "settled" | null>("active"); // null=全部，active=参与中，settled=已结束（默认显示参与中）
   const publicClient = usePublicClient();
   const [activityStatuses, setActivityStatuses] = useState<Record<string, { isCompleted: boolean; isEliminated: boolean; challengeStatus?: number }>>({}); // fix: 添加 challengeStatus 字段
 
@@ -649,8 +649,8 @@ export default function ProfilePage() {
               const categorizeActivity = (activity: ActivityMetadata): "Professional Web3" | "Social Web3" | "Lifestyle" | null => {
                 const description = (activity.description || "").toLowerCase();
                 
-                // Professional Web3: 描述中包含"黑客松"或"会议"
-                if (description.includes("黑客松") || description.includes("会议")) {
+                // Professional Web3: 描述中包含"比赛"或"会议"
+                if (description.includes("比赛") || description.includes("会议")) {
                   return "Professional Web3";
                 }
                 

@@ -98,6 +98,29 @@ contract NFTActivity {
         emit ParticipantJoined(msg.sender, participantList.length);
     }
 
+    /// @notice 工厂合约代表创建者加入活动（Social Web3专用，完全独立的实现）
+    /// @dev 仅允许工厂合约调用，且只能让创建者加入
+    /// @param _factoryAddress 工厂合约地址
+    /// @param _creatorAddress 创建者地址
+    function joinActivityForCreator(address _factoryAddress, address _creatorAddress) external {
+        require(msg.sender == _factoryAddress, "ONLY_FACTORY");
+        require(_creatorAddress == creator, "ONLY_CREATOR");
+        
+        _syncStatus();
+        require(status == Status.Scheduled, "JOIN_CLOSED");
+        require(startTime == 0 || block.timestamp < startTime, "ALREADY_STARTED");
+        require(participantList.length < maxParticipants, "MAX_PARTICIPANTS_REACHED");
+
+        Participant storage p = participantInfo[_creatorAddress];
+        require(!p.joined, "ALREADY_JOINED");
+
+        p.joined = true;
+        p.lastCheckInRound = NOT_CHECKED;
+        participantList.push(_creatorAddress);
+
+        emit ParticipantJoined(_creatorAddress, participantList.length);
+    }
+
     function checkIn() external {
         _syncStatus();
         require(status == Status.Active, "NOT_ACTIVE");
@@ -140,6 +163,37 @@ contract NFTActivity {
         startTime = block.timestamp;
         status = Status.Active;
         aliveCount = participantList.length;
+    }
+
+    /// @notice 开始活动并自动签到（仅创建者可调用）
+    /// @dev 在一次交易中完成开始活动和创建者签到（完全独立于押金活动的实现）
+    function startActivityAndCheckIn() external {
+        require(msg.sender == creator, "ONLY_CREATOR");
+        require(status == Status.Scheduled, "ALREADY_STARTED_OR_SETTLED");
+        require(startTime == 0, "ALREADY_SCHEDULED");
+        require(participantList.length > 0, "NO_PARTICIPANTS");
+        
+        // 开始活动
+        startTime = block.timestamp;
+        status = Status.Active;
+        aliveCount = participantList.length;
+        
+        // 检查创建者是否已报名
+        Participant storage p = participantInfo[msg.sender];
+        require(p.joined, "CREATOR_NOT_JOINED");
+        require(!p.eliminated, "CREATOR_ELIMINATED");
+        
+        // 计算当前轮次（活动刚开始，应该是1）
+        uint256 currentRound = 1; // NFT 活动从 1 开始计数
+        require(currentRound > 0 && currentRound <= totalRounds, "INVALID_ROUND");
+        
+        // 检查是否已经签到过当前轮次
+        require(p.lastCheckInRound != currentRound, "ALREADY_CHECKED_IN");
+        
+        // 执行签到（第一天，轮次为1）
+        p.lastCheckInRound = currentRound;
+        
+        emit CheckIn(msg.sender, currentRound, block.timestamp);
     }
 
     function endActivity() external {
@@ -227,4 +281,8 @@ contract NFTActivity {
         return (elapsed / roundDuration) + 1;
     }
 }
+
+
+
+
 

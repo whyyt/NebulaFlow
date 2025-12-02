@@ -232,6 +232,13 @@ export const CHALLENGE_ABI = [
   },
   {
     type: "function",
+    name: "forceStartAndCheckIn",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable"
+  },
+  {
+    type: "function",
     name: "forceEnd",
     inputs: [],
     outputs: [],

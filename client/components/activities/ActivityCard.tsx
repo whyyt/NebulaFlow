@@ -2,23 +2,28 @@
 
 import { ActivityMetadata, IncentiveType } from "../../lib/types";
 import { useRouter, usePathname } from "next/navigation";
-import { useAccount, useReadContract } from "wagmi";
-import { CHALLENGE_ABI } from "../../lib/activityRegistry";
+import { useAccount, useReadContract, usePublicClient } from "wagmi";
+import { CHALLENGE_ABI, ACTIVITY_REGISTRY_ABI } from "../../lib/activityRegistry";
 import { formatEther } from "viem";
 
 interface ActivityCardProps {
   activity: ActivityMetadata & { activityId?: number };
   hideIfSettled?: boolean; // 如果为 true，当活动已结束时返回 null
+  hideIfActive?: boolean; // 如果为 true，当活动进行中时返回 null
 }
 
-export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardProps) {
+export function ActivityCard({ activity, hideIfSettled = false, hideIfActive = false }: ActivityCardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const isProfilePage = pathname === "/profile"; // 判断是否在 My Journey 页面
   
   // 所有活动都是押金模式
   const activityABI = CHALLENGE_ABI;
+  
+  // ActivityRegistry 地址（需要从环境或配置中获取，这里使用硬编码）
+  const ACTIVITY_REGISTRY_ADDRESS = "0x9E545E3C0baAB3E08CdfD552C960A1050f373042";
   
   // 读取链上状态
   const { data: participantInfo } = useReadContract({
@@ -69,12 +74,32 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
   const creatorAddress = activity.creator || "";
 
   // 点击跳转到活动详情页
-  const handleClick = () => {
-    if (activity.activityId !== undefined) {
+  const handleClick = async () => {
+    let targetActivityId = activity.activityId;
+    
+    // 如果 activityId 不存在，尝试通过 activityContract 从 ActivityRegistry 查询
+    if (targetActivityId === undefined && activity.activityContract && publicClient) {
+      try {
+        const activityId = await publicClient.readContract({
+          address: ACTIVITY_REGISTRY_ADDRESS as `0x${string}`,
+          abi: ACTIVITY_REGISTRY_ABI,
+          functionName: "contractToActivity",
+          args: [activity.activityContract as `0x${string}`]
+        }) as bigint;
+        
+        if (activityId && activityId !== BigInt(0)) {
+          targetActivityId = Number(activityId);
+        }
+      } catch (err) {
+        console.error("Failed to query activityId from ActivityRegistry:", err);
+      }
+    }
+    
+    if (targetActivityId !== undefined) {
       // 如果在 My Journey 页面，添加 from=profile 参数
       const url = isProfilePage 
-        ? `/activities/${activity.activityId}?from=profile`
-        : `/activities/${activity.activityId}`;
+        ? `/activities/${targetActivityId}?from=profile`
+        : `/activities/${targetActivityId}`;
       router.push(url);
     } else {
       console.warn("Activity ID not available, cannot navigate to detail page");
@@ -91,6 +116,11 @@ export function ActivityCard({ activity, hideIfSettled = false }: ActivityCardPr
 
   // 如果 hideIfSettled 为 true 且活动已结束，返回 null
   if (hideIfSettled && isSettled) {
+    return null;
+  }
+
+  // 如果 hideIfActive 为 true 且活动进行中，返回 null
+  if (hideIfActive && isActive) {
     return null;
   }
 

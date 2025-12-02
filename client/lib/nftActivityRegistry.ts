@@ -11,6 +11,16 @@ export const NFT_ACTIVITY_ABI = [
   },
   {
     type: "function",
+    name: "joinActivityForCreator",
+    inputs: [
+      { name: "_factoryAddress", type: "address", internalType: "address" },
+      { name: "_creatorAddress", type: "address", internalType: "address" }
+    ],
+    outputs: [],
+    stateMutability: "nonpayable"
+  },
+  {
+    type: "function",
     name: "checkIn",
     inputs: [],
     outputs: [],
@@ -19,6 +29,13 @@ export const NFT_ACTIVITY_ABI = [
   {
     type: "function",
     name: "startActivity",
+    inputs: [],
+    outputs: [],
+    stateMutability: "nonpayable"
+  },
+  {
+    type: "function",
+    name: "startActivityAndCheckIn",
     inputs: [],
     outputs: [],
     stateMutability: "nonpayable"
@@ -169,6 +186,23 @@ export const NFT_ACTIVITY_FACTORY_ABI = [
   },
   {
     type: "function",
+    name: "createNFTActivityAndJoin",
+    inputs: [
+      { name: "_title", type: "string", internalType: "string" },
+      { name: "_description", type: "string", internalType: "string" },
+      { name: "_totalRounds", type: "uint256", internalType: "uint256" },
+      { name: "_maxParticipants", type: "uint256", internalType: "uint256" },
+      { name: "_isPublic", type: "bool", internalType: "bool" },
+      { name: "_creatorName", type: "string", internalType: "string" }
+    ],
+    outputs: [
+      { name: "activityAddress", type: "address", internalType: "address" },
+      { name: "activityId", type: "uint256", internalType: "uint256" }
+    ],
+    stateMutability: "nonpayable"
+  },
+  {
+    type: "function",
     name: "activityRegistry",
     inputs: [],
     outputs: [{ name: "", type: "address", internalType: "address" }],
@@ -199,4 +233,8 @@ export const NFT_ACTIVITY_FACTORY_ABI = [
     ]
   }
 ] as const;
+
+
+
+
 
